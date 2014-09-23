@@ -1,0 +1,305 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Window xmlns:mx="http://www.adobe.com/2006/mxml" 
+		   layout="absolute" width="1156" height="700" 
+		   close="unload(event);" 
+		   resize="resizeHandler(event);"
+		   addedToStage="addedToStageHandler(event)"
+		   backgroundColor="0x333333" 
+		   xmlns:s="library://ns.adobe.com/flex/spark"
+		   showStatusBar="false"
+		   resizable="false"
+		   initialize="window1_initializeHandler(event)"
+		   >
+	<mx:Script>
+		<![CDATA[
+			import com.st.framework.utils.LocalStoreUtil;
+			import com.st.framework.utils.MathUtils;
+			import com.st.framework.utils.Utils;
+			
+			import events.ImporterEvent;
+			import events.PreviewJtaEvent;
+			
+			import texture.AnimationAct;
+			import texture.AnimationDir;
+			import texture.AnimationFrame;
+			import texture.AnimationImporter;
+			
+			import mx.collections.ArrayCollection;
+			import mx.core.UIComponent;
+			import mx.events.FlexEvent;
+			import mx.events.ListEvent;
+			import mx.events.ResizeEvent;
+			
+			import view.MyComponents.LoadingInfo;
+			
+			private static const PREVIEW_FOLDER:String = "PREVIEW_FOLDER";
+			private var currPath:String;
+			
+			
+			protected function pathBox_changeHandler(event:ListEvent):void
+			{
+				if(pathBox.selectedIndex == 0 || currPath == pathBox.selectedItem) {
+					pathBox.selectedItem = currPath;
+					return;
+				}
+				
+				unload();
+				currPath = pathBox.selectedItem as String;
+				files.length = 0;
+				parseFile(new File(currPath));
+				transFile();
+			}
+			
+			protected function button1_clickHandler(event:MouseEvent):void
+			{
+				var tfile:File = new File(pathList.length > 1 ? pathList[1] : null);
+				tfile.addEventListener(Event.SELECT, selectHandler);
+				tfile.browseForDirectory("请选择动画文件目录");
+			}
+			
+			private function selectHandler(event:Event):void
+			{
+				var tfile:File = event.target as File;
+				tfile.removeEventListener(Event.SELECT, selectHandler);
+				if(!pathList.contains(tfile.nativePath)){
+					pathList.addItemAt(tfile.nativePath, 1);
+					LocalStoreUtil.save(PREVIEW_FOLDER, pathList.toArray().slice(1));
+				}
+				pathBox.selectedIndex = 1;
+				pathBox_changeHandler(null);
+			}
+			
+			private function unload(...args):void
+			{
+				while(frameTile.numChildren > 0){
+					delete fileDic[frameTile.getChildAt(0)];
+					frameTile.getChildAt(0).removeEventListener(MouseEvent.CLICK, clickHandler);
+					frameTile.removeChildAt(0);
+				}
+				for each(var tf:AnimationFrame in frames){
+					tf.unload();
+				}
+				frames.length = 0;
+				frameTile.width = frameTile.height = 0;
+				tx = 0;
+				ty = 50;
+				th = 0;
+			}
+			
+			private function clickHandler(event:MouseEvent):void
+			{
+				if(event.commandKey || event.ctrlKey){
+					return;
+				}
+				
+				var tevt:PreviewJtaEvent = new PreviewJtaEvent(PreviewJtaEvent.OPEN);
+				tevt.file = fileDic[event.target];
+				dispatchEvent(tevt);
+			}
+			
+			/** 预览的帧 */
+			private var frames:Vector.<AnimationFrame> = new Vector.<AnimationFrame>();
+			private var fileDic:Dictionary = new Dictionary();
+			
+			[Bindable]
+			private var pathList:ArrayCollection = new ArrayCollection();
+			
+			/** 坐标 */
+			private var tx:Number = 0, ty:Number = 50, th:Number = 0;
+			private var ttimer:Timer = new Timer(10, 3);
+			private function transFile():void
+			{
+				if(files.length < 1) return;
+				
+				var tloading:LoadingInfo = LoadingInfo.Show(this, files.length);
+				var tloadNum:int = 0;
+				tloading.title = "正在生成预览……";
+				ttimer.addEventListener(TimerEvent.TIMER_COMPLETE, 
+					function ttimerHandler(event:TimerEvent):void
+					{
+						ttimer.stop();
+						if(files.length < 1){
+							ttimer.removeEventListener(TimerEvent.TIMER_COMPLETE, ttimerHandler);
+							tloading.Hide();
+							
+							resizeHandler(null);
+							return;
+						}
+						//读取ByteArray内容
+						var tfile:File = files.shift();
+						var timportor:AnimationImporter = new AnimationImporter();
+						var tarr:Array = tfile.name.split(".");
+						var text:String = tarr.length > 1 ? tarr.pop() : "";
+						
+						fileDic[timportor] = tfile;
+						timportor.addEventListener(ImporterEvent.ImportComplete, importCompleteHandler);
+						if(text.toLowerCase() == "jta"){
+							//jta动画格式
+							timportor.loadAnmBy(tfile, false);
+						}
+						else{
+							//tt纹理格式
+							timportor.loadTextureBy(tfile);
+						}
+						
+						tloadNum++;
+						tloading.setValue(tloadNum);
+					}
+				);
+				ttimer.start();
+			}
+			
+			private function importCompleteHandler(e:ImporterEvent):void
+			{
+				var timportor:AnimationImporter = e.target as AnimationImporter;
+				timportor.removeEventListener(ImporterEvent.ImportComplete, importCompleteHandler);
+				//
+				var tfile:File = fileDic[timportor];
+				delete fileDic[timportor];
+				//随机读取里面1帧
+				var tas:AnimationAct = timportor.actList[0];
+				var tao:AnimationDir = tas.props.dirList[MathUtils.randomInt(0, tas.props.dirList.length-1)];
+				var taf:AnimationFrame = tao.frames[MathUtils.randomInt(0, tao.frames.length-1)].duplicate() as AnimationFrame;
+				timportor.unload();
+				//坐标
+				if(tx + taf.props.rect.width > width) {
+					ty += th + 10;
+					tx = 0;
+					th = 0;
+				}
+				fileDic[taf] = tfile;
+				taf.draw();
+				taf.toolTip = "点击编辑\n文件名：" + tfile.name + "\n大小：" + Utils.getSizeName(tfile.size) + "\n压缩格式：" + (taf.props.alpha == null ? "PNG" : "JPG");
+				taf.addEventListener(MouseEvent.CLICK, clickHandler);
+				taf.x = tx;
+				taf.y = ty;
+				tx += taf.props.rect.width + 10;
+				th = Math.max(th, taf.props.rect.height);
+				//添加到显示列表
+				frameTile.addChild(taf);
+				frameTile.height = ty + th;
+				frames.push(taf);
+				
+				ttimer.start();
+			}
+			
+			/** Jta文件列表 */
+			private var files:Vector.<File> = new Vector.<File>();
+			private function parseFile(tfile:File):void
+			{
+				//目录
+				if(tfile.isDirectory)
+				{
+					if(!tfile.isHidden 
+						&& !tfile.isSymbolicLink
+						&& tfile.name.charAt(0) != "."
+						&& [".svn"].indexOf(tfile.name) == -1){
+						var tfiles:Array = tfile.getDirectoryListing();
+						for each(tfile in tfiles){
+							parseFile(tfile);
+						}
+					}
+					return;
+				}
+				
+				var tarr:Array = tfile.name.split(".");
+				var text:String = tarr.length > 1 ? tarr.pop() : "";
+				if(text == "jta" || text == "tt"){
+					files.push(tfile);
+				}
+			}
+			
+			/** 窗口大小改变 */
+			protected function resizeHandler(event:ResizeEvent):void
+			{
+				var tlen:int = frames.length; 
+				var taf:AnimationFrame;
+				
+				tx = 0;
+				ty = 50;
+				th = 0;
+				for(var i:int = 0; i < tlen; i++){
+					taf = frames[i] as AnimationFrame;
+					
+					//坐标
+					if(tx + taf.props.rect.width > width) {
+						ty += th + 10;
+						tx = 0;
+						th = 0;
+					}
+					taf.x = tx;
+					taf.y = ty;
+					tx += taf.props.rect.width + 10;
+					th = Math.max(th, taf.props.rect.height);
+					frameTile.height = ty + th;
+				}
+				
+				if(frameContainer && bg){
+					frameContainer.width = width;
+					frameContainer.height = height - 50;
+					
+					bg.width = frameContainer.width;
+					bg.height = frameTile.height;
+				}
+			}
+			
+			private var bg:Bitmap;
+			protected function addedToStageHandler(event:Event):void
+			{
+				if(bg == null){
+					mouseLayout.addChild(bg = new Bitmap(new BitmapData(1, 1, true, 0x000000)));
+					maximize();
+				}
+			}
+			
+			private var mouseDown:Boolean = false, mx:Number, my:Number;
+			protected function frameTile_mouseDownHandler(event:MouseEvent):void
+			{
+				if(event.commandKey || event.ctrlKey){
+					mx = event.stageX;
+					my = event.stageY;
+					mouseDown = true;
+					stage.addEventListener(MouseEvent.MOUSE_MOVE, mouseMoveHandler);
+					stage.addEventListener(MouseEvent.MOUSE_UP, mouseUpHandler);
+				}
+			}
+			
+			protected function mouseMoveHandler(event:MouseEvent):void
+			{
+				frameContainer.verticalScrollPosition -= event.stageY - my;
+				frameContainer.horizontalScrollPosition -= event.stageX - mx;
+				
+				mx = event.stageX;
+				my = event.stageY;
+			}
+			
+			protected function mouseUpHandler(event:MouseEvent):void
+			{
+				mouseDown = false;
+				stage.removeEventListener(MouseEvent.MOUSE_MOVE, mouseMoveHandler);
+				stage.removeEventListener(MouseEvent.MOUSE_UP, mouseUpHandler);
+			}
+			
+			protected function window1_initializeHandler(event:FlexEvent):void
+			{
+				mouseDown = false;
+				var tarr:Array = ["请选择预览目录..."].concat(LocalStoreUtil.read(PREVIEW_FOLDER));
+				for(var i:int = 0; i < tarr.length; i+=1){
+					pathList.addItem(tarr[i]);
+				}
+			}
+			
+		]]>
+	</mx:Script>
+	<mx:VBox>
+		<mx:HBox>
+			<mx:Button label="目录" click="button1_clickHandler(event)" />
+			<mx:ComboBox id="pathBox" editable="false" dataProvider="{pathList}"
+						 change="pathBox_changeHandler(event)"/>
+		</mx:HBox>
+		<mx:Canvas id="frameContainer" mouseDown="frameTile_mouseDownHandler(event)">
+			<mx:UIComponent id="mouseLayout" mouseChildren="false" mouseEnabled="false"/>
+			<mx:UIComponent id="frameTile" mouseEnabled="false"/>
+		</mx:Canvas>
+	</mx:VBox>
+</mx:Window>

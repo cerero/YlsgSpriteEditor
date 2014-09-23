@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:TitleWindow 
+	title="帧选择工具" 
+	xmlns:mx="http://www.adobe.com/2006/mxml" 
+	layout="absolute" 
+	width="700" 
+	height="400" 
+	verticalScrollPolicy="off" 
+	horizontalScrollPolicy="off" 
+	creationComplete="start()" 
+	backgroundColor="0x333333" 
+	close="onWinClose(event)">
+	
+	<mx:Script>
+		<![CDATA[
+			import events.AnimationFrameEvent;
+			
+			import mx.managers.PopUpManager;
+			
+			import texture.AnimationDir;
+			import texture.AnimationFrame;
+			
+			private var _animationDir:AnimationDir;
+			public var characterEditor:YlsgSpriteEditor;
+						
+			private function start():void
+			{
+				if(_animationDir)
+				{
+					fillFrames();
+				}
+				addEventListener(MouseEvent.CLICK, onClick);
+				addEventListener(AnimationFrameEvent.DeleteFrame, onDeleteFrame, false, -10000);
+			}
+			
+			public function set animationDir(value:AnimationDir):void
+			{
+				_animationDir = value;
+				if(theTile){
+					fillFrames();
+				}
+			}
+			
+			private function fillFrames():void
+			{
+				var maxSp:int = _animationDir.props.act.props.speed;
+				for(var i:int = 0; i < _animationDir.frames.length; ++i)
+				{
+					/////// 倒一下frame顺序让美工做起来直观一些。可以试着注释下面几行index相关的代码
+					//直接让index等于i看看编辑的效果
+					var index:int = i+1;
+					if(index >= _animationDir.frames.length)
+					{
+						index = 0;
+					}
+					//af的索引一定要用i
+					var af:AnimationFrame = _animationDir.frames[i];
+					var ft:FrameTile = new FrameTile();
+					var sp:int = _animationDir.props.act.props.framesSpeed[index];
+					theTile.addChild(ft);
+					ft.animationFrame.addChild(af);
+					ft.af = af;
+					ft.animationFrame.width = Math.max(_animationDir.props.rect.width, 100);
+					ft.slider.maximum = maxSp;
+					ft.height = Math.max(_animationDir.props.rect.height, 150);
+					ft.slider.height = Math.max(_animationDir.props.rect.height, 150);
+					ft.slider.value = _animationDir.props.act.props.framesSpeed[index] = Math.min(maxSp, sp);
+					ft.frameIndex = index;
+					ft.animationSet = _animationDir.props.act;
+					ft.radioBtn.group = fireFrame;
+					ft.radioBtn.label = String(i+1);
+				}
+				theTile.tileWidth = Math.max(_animationDir.props.rect.width + 60, 150);
+				theTile.tileHeight = Math.max(_animationDir.props.rect.height + 10, 150);
+				fireFrame.selectedValue = String(_animationDir.props.act.props.fireFrame);
+			}
+			
+			private function onDeleteFrame(event:AnimationFrameEvent):void
+			{
+				theTile.removeAllChildren();
+				fillFrames();
+			}
+			
+			private function onClick(event:MouseEvent):void
+			{
+				var target:Object = event.target;
+				while(target && !(target is AnimationFrame))
+				{
+					target = target.parent;
+				}
+				if(!target)
+				{
+					return;
+				}
+				var af:AnimationFrame = AnimationFrame(target);
+				//获得af的index
+				if(characterEditor)
+				{
+					var index:int = _animationDir.frames.indexOf(af);
+					if(index != -1)
+					{
+						characterEditor.changeFrame(index);
+						characterEditor.activate();
+					}
+				}
+			}
+			
+			private function onWinClose(event:Event):void
+			{
+				if(_animationDir)
+				{
+					_animationDir.props.act.props.fireFrame = parseInt(String(fireFrame.selectedValue));
+				}
+				theTile.removeAllChildren();
+				_animationDir = null;
+				PopUpManager.removePopUp(this);
+			}
+		]]>
+	</mx:Script>
+	<mx:RadioButtonGroup id="fireFrame"/>
+	<mx:Tile id="theTile" width="696" height="368" />
+</mx:TitleWindow>

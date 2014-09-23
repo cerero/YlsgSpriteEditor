@@ -1,0 +1,23 @@
+﻿<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<Config>
+	<DirMappings>
+		<DirMapping trait="_S_" name="南"/>
+		<DirMapping trait="_W_" name="西"/>
+		<DirMapping trait="_N_" name="北"/>
+		<DirMapping trait="_ES_" name="东南"/>
+		<DirMapping trait="_WS_" name="西南"/>
+		<DirMapping trait="_EN_" name="东北"/>
+		<DirMapping trait="_WN_" name="西北"/>
+		<DirMapping trait="_E_" name="东"/>
+	</DirMappings>
+	<ActionMappings>
+		<ActionMapping trait="gongji" name="攻击" speed="12"/>
+		<ActionMapping trait="siwang" name="死亡" speed="12"/>
+		<ActionMapping trait="shoushang" name="受伤" speed="12"/>
+		<ActionMapping trait="daiji" name="站立" speed="12"/>
+		<ActionMapping trait="walk" name="走动" speed="12"/>
+		<ActionMapping trait="fukong" name="浮空" speed="12"/>
+		<ActionMapping trait="horse" name="坐骑" speed="12"/>
+		<ActionMapping trait="shifa" name="施法" speed="12"/>
+	</ActionMappings>
+</Config>

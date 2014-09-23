@@ -1,0 +1,2200 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:WindowedApplication 	xmlns:fx="http://ns.adobe.com/mxml/2009" 
+						xmlns:s="library://ns.adobe.com/flex/spark" 
+						xmlns:mx="library://ns.adobe.com/flex/mx"
+						showStatusBar="false"
+						height="770" 
+						width="1250" 
+						applicationComplete="createComplete();" 
+						initialize="init();"
+						xmlns:MyComponents="view.MyComponents.*" 
+						frameRate="60" 
+						title="御龙三国动画编辑器" 
+						xmlns:texture="texture.*" 
+						closing="onClose(event)">
+	
+	<fx:Script>
+		<![CDATA[			
+			
+			import app.config.AppConfig;
+			import app.update.AppUpdater;
+			
+			import com.codeazur.as3swf.utils.ObjCUtils;
+			import com.greensock.TweenMax;
+			import com.greensock.easing.Linear;
+			import com.st.framework.utils.FileUtil;
+			import com.st.framework.utils.LocalStoreUtil;
+			
+			import config.ConfigData;
+			
+			import editor.AnimationBlender;
+			
+			import events.AnimationBlenderEvent;
+			import events.AnimationFrameEvent;
+			import events.FrameSelectEvent;
+			import events.ImporterEvent;
+			import events.PreviewJtaEvent;
+			
+			import flash.utils.clearInterval;
+			import flash.utils.getTimer;
+			import flash.utils.setInterval;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.controls.Image;
+			import mx.core.FlexGlobals;
+			import mx.core.UIComponent;
+			import mx.core.Window;
+			import mx.events.CloseEvent;
+			import mx.events.DataGridEvent;
+			import mx.events.DropdownEvent;
+			import mx.events.ListEvent;
+			import mx.events.SliderEvent;
+			import mx.managers.PopUpManager;
+			
+			import spark.primitives.Line;
+			
+			import texture.AnimationAct;
+			import texture.AnimationDir;
+			import texture.AnimationExporter;
+			import texture.AnimationFrame;
+			import texture.AnimationImporter;
+			import texture.CompilerTexture;
+			import texture.ImageExporter;
+			import texture.SwfExporter;
+			import texture.TextureExporter;
+			
+			import utils.*;
+			import utils.image.AnimationFrameRipper;
+			
+			import view.BgSelectWindow;
+			import view.FrameSelectWindow;
+			import view.MyComponents.LoadingInfo;
+			import view.PreviewWindow;
+			
+			[Bindable]
+			private var canAnimationRect_width:Number=200;
+			[Bindable]
+			private var canAnimationRect_height:Number=200;
+			[Bindable]
+			private var canDirObjRect_width:Number=100;
+			[Bindable]
+			private var canDirObjRect_height:Number=100;
+			[Bindable]
+			private var canFirePointRect_width:Number=20;
+			[Bindable]
+			private var canFirePointRect_height:Number=20;
+			
+			[Bindable]
+			private var synmmetryList:ArrayCollection = new ArrayCollection([{label:"无", data:AnimationAct.SYNMMETRY_NONE},{label:"左右", data:AnimationAct.SYNMMETRY_LR},{label:"上下", data:AnimationAct.SYNMMETRY_UD}]);
+			
+			[Bindable]
+			private var playList:ArrayCollection = new ArrayCollection([{label:"同步播放", data:0},{label:"独立播放", data:1}]);
+			[Bindable]
+			private var playList2:ArrayCollection = new ArrayCollection([{label:"否", data:0},{label:"是", data:1}]);
+			/**舞台动画播放x坐标**/
+			private static const AnimationObjectPosX:Number = 290//-140;
+			/**舞台动画播放y坐标**/
+			private static const AnimationObjectPosY:Number = 250//-100;
+			
+			/**笛卡尔坐标系**/
+			private var axisUtil:AxisUtil;
+			
+			/**左上角动作下拉列表**/
+			[Bindable]
+			private var actList:ArrayCollection = new ArrayCollection([]);
+			
+			/**左上角方向下拉列表**/
+			[Bindable]
+			private  var dirList:ArrayCollection = new ArrayCollection([]);
+			
+			/**参考tt数组
+			 * {label: "tt名称", data: AnimationImporter类}
+			 * **/
+			[Bindable]
+			private var refTextureArrayCollection:ArrayCollection = new ArrayCollection([]);
+			
+			/**参考tt的动作数组
+			 * {label:"动作名", data:AnimationAct}
+			 * **/
+			[Bindable]
+			private var refActArrayCollection:ArrayCollection = new ArrayCollection([]);
+			
+			/**参考tt的方向数组
+			 * {label:"方向名", data:AnimationDir}
+			 * **/
+			[Bindable]
+			private var refDirArrayCollection:ArrayCollection = new ArrayCollection([]);
+			
+			/**动作效果播放开始帧**/
+			[Bindable]
+			private var ttEffectStartFrame:String = "0";
+			
+			/** 动画对象导入器 **/
+			[Bindable]
+			private var anmImporter:AnimationImporter;
+			
+			/**动作效果导入器**/
+			[Bindable]
+			private var ttEffectImporter:AnimationImporter;
+			
+			/** 动画混合 **/
+			private var anmBlender:AnimationBlender = new AnimationBlender();
+			
+			/** 配置源 **/
+			private var configImporter:AnimationImporter;
+			
+			private var frameSelectWindow:FrameSelectWindow;
+			private var appConfig:AppConfig;
+			private var updater:AppUpdater;
+			
+			private function init():void
+			{
+				//读取最近的打开的文件夹
+				ConfigData.readConfig(new File("app:/project_config.xml"));
+				
+				ttEffectImporter = new AnimationImporter();
+				ttEffectImporter.addEventListener(ImporterEvent.ImportComplete,importTTEffectCompleteHandler);
+				
+				anmImporter = new AnimationImporter();
+				anmImporter.mainApp = this;
+				anmImporter.addEventListener(ImporterEvent.ImportComplete, importCompleteHandler);
+				addEventListener(Event.ENTER_FRAME, onFrameEnter);
+				
+				//动画混合
+				anmBlender.container = canAnimationLayers; 
+				anmBlender.addEventListener(AnimationBlenderEvent.ANIMATION_ADD, onRefAnimationAddHandler);
+				anmBlender.addEventListener(AnimationBlenderEvent.ANIMATION_REMOVED, onRefAnimationRemovedHandler);
+				anmBlender.addEventListener(AnimationBlenderEvent.ANIMATION_REMOVED_ALL, onRefAnimationRemovedAllHandler);
+				//anmBlender.x = AnimationObjectPosX;
+				//anmBlender.y = AnimationObjectPosY;
+				//canAnimationLayers
+				/* var tui:UIComponent = new UIComponent();
+				canAnimationLayer1.addChild(tui);
+				tui.addChild(anmBlender); */
+				
+				//文件拖动事件
+				addEventListener(NativeDragEvent.NATIVE_DRAG_ENTER, onDragIn);
+				addEventListener(NativeDragEvent.NATIVE_DRAG_DROP, onDrop);
+				
+				var configRootPath:String = LocalStoreUtil.read("configRootPath");
+				if( configRootPath ){
+					txtConfRootPath.text = configRootPath; 
+				}
+			}
+			
+			private function onDragIn(event:NativeDragEvent):void
+			{
+				NativeDragManager.acceptDragDrop(this);
+			}
+			
+			private function onDrop(event:NativeDragEvent):void
+			{
+				var tfiles:Array = event.clipboard.getData(ClipboardFormats.FILE_LIST_FORMAT) as Array;
+				for each (var tf:File in tfiles){
+					if(tf.isDirectory) {
+						anmImporter.loadImgByFile(tf);
+						break;
+					}
+					switch(tf.extension.toLowerCase()){
+						case "tt":
+							anmImporter.loadTextureBy(tf);
+							break;
+						
+						case "jta":
+							anmImporter.loadAnmBy(tf);
+							break;
+						
+						case "swf" :
+							anmImporter.loadSwfBy(tf);
+							break;
+					}
+				}
+			}
+			
+			private function createComplete():void
+			{
+				new KeyboardUtil(this,img);
+				img.addEventListener("sourceChanged", onImageChange);
+				axisUtil = new AxisUtil();
+				axisUtil.drawXYaxis(canImageContains,canAxis);
+				
+				//自动更新
+				appConfig = new AppConfig();
+				updater = new AppUpdater(this, appConfig);
+				var tfile:File = new File("app:/AppConfig.xml");
+				if(!tfile.exists)
+				{
+					return;
+				}
+				appConfig.parse(new XML(FileUtil.read(tfile)));				
+				checkUpdate(null);
+			}
+			
+			private function localToModel(localPos:Point):Point
+			{
+				return new Point(localPos.x-canAxis.width*0.5, localPos.y-canAxis.height*0.5);
+			}
+			
+			private function modelToLocal(modelPos:Point):Point
+			{
+				return new Point(modelPos.x+canAxis.width*0.5, modelPos.y+canAxis.height*0.5);
+			}
+			
+			private function saveChange():void
+			{
+				//save to file
+				if(anmImporter.textureFile){
+					//导入的为纹理格式，保存属性只支持纹理格式
+					var tarr:Vector.<AnimationAct> = new Vector.<AnimationAct>();
+					for each(var obj:* in actList)
+					{
+						if(obj.data)
+						{
+							tarr.push(obj.data);
+						}
+					}
+					TextureExporter.saveChange(anmImporter.textureFile, tarr);
+				}
+			}
+			
+			private function saveActProps():void
+			{
+				var tact:AnimationAct = currAct;
+				currAct.props.symmetry = cboSymmetry.selectedIndex;
+				currAct.props.playeType = cboPlay.selectedIndex; 
+				//currAct.props.isTTEffect = cboIsTTEffect.selectedIndex;
+				
+				tact.props.rect.width = Number(txtCanARWidth.text);
+				tact.props.rect.height = Number(txtCanARHeight.text);
+				tact.props.rect.x = Number(txtAnimationX.text);
+				tact.props.rect.y = Number(txtAnimationY.text);
+				//tact.props.speed = Number(txtPlaySpeed.text);
+				tact.props.yinchangFrame = Number(txtYinchangFrame.text);
+				tact.props.attackFrame = Number(txtAttackFrame.text);
+				tact.props.baseDunDelay = Number(txtBaseDunTime.text);
+				
+				var col:ArrayCollection = dunGrid.dataProvider as ArrayCollection;
+				for( var i:int=0;i<col.length;i++ ){
+					var obj:Object = col[i];
+					tact.props.framesSpeed[i] = int(obj.normal);
+					tact.props.hurtAngles[i] = int(obj.angle);
+				}
+				tact.props.hurtScaleX = Number(txtHurtScaleX.text);
+				tact.props.hurtScaleY = Number(txtHurtScaleY.text);
+				tact.props.loopStart = Number(txtLoopStart.text);
+				tact.props.loopEnd = Number(txtLoopEnd.text);
+				tact.props.loops = Number(txtLoops.text);
+				if( currDir )
+					currDir.props.ttEffectStartFrame = uint(txtTTEffectStartFrame.text) ;
+				determineSpeedMode(tact);
+				//tact.props.repeatCount = Number(txtRepeatCount.text);
+				startF = 0;
+				endF = currDir.frames.length-1;
+				updateFrameByTime(startF,endF);
+				saveChange();
+			}
+			
+			private function delAct():void
+			{
+				var tobj:Object = actList.getItemAt(cboType.selectedIndex);
+				if(tobj.data is AnimationAct)
+				{
+					var tact:AnimationAct = tobj.data as AnimationAct
+					Alert.show("确定删除这个["+tact.props.typeName+"]动作吗？", "提示", Alert.YES|Alert.NO, null, confirmDelActHandler);
+				}
+			}
+			
+			private function confirmDelActHandler(event:CloseEvent):void
+			{
+				if(event.detail == Alert.YES)
+				{
+					var tobj:Object = actList.removeItemAt(cboType.selectedIndex);
+					var tidx:int = anmImporter.actList.indexOf(tobj.data);
+					if(tidx != -1)
+					{
+						anmImporter.actList.splice(tidx, 1);
+					}
+					cboType.selectedIndex=1;
+					changeAnimationActHandler(null);
+					//禁用保存属性
+					anmImporter.textureFile = null;
+				}
+			}
+			
+			/** 保存方向属性 */
+			private function saveDirProps():void
+			{
+				//更新属性
+				currDir.props.rect.width = Number(txtCanDORWidth.text);
+				currDir.props.rect.height = Number(txtCanDORHeight.text);
+				currDir.props.rect.x = Number(txtDirObjX.text);
+				currDir.props.rect.y = Number(txtDirObjY.text);
+				currDir.props.firePoint.x = Number(txtFirePointX.text);
+				currDir.props.firePoint.y = Number(txtFirePointY.text);
+				currDir.props.ttEffectStartFrame = uint(txtTTEffectStartFrame.text); 
+				
+				//保存至文件
+				saveChange();
+			}
+			
+			/** 删除方向 */
+			private function delDir():void
+			{
+				if(dirList.length <= 0)
+				{
+					return;
+				}
+				var tobj:Object = dirList.removeItemAt(cboDirection.selectedIndex);
+				
+				cboDirection.selectedIndex = 0;
+				currAct.removeDir(currDir);
+				synmmetryImg.source = img.source = null;
+				if(ckbDelAll.selected)
+				{
+					var tdir:AnimationDir = tobj.data as AnimationDir;
+					for each(var titm:Object in actList)
+					{
+						if(!titm.data)
+						{
+							continue;
+						}
+						var tact:AnimationAct = titm.data as AnimationAct;
+						if(currAct && currAct.props == tact.props)
+						{
+							continue;
+						}
+						for each(var tad:AnimationDir in tact.props.dirList)
+						{
+							if(tad.props.dir == tdir.props.dir)
+							{
+								tact.removeDir(tad);
+								break;
+							}
+						}
+					}
+				}
+				changeAnimationDirHandler(null);
+				//不再允许保存单个属性
+				anmImporter.textureFile = null;
+			}
+			
+			/** 导出图片 */
+			private function exportImage():void
+			{
+				var tarr:Vector.<AnimationAct> = new Vector.<AnimationAct>();
+				for each(var obj:* in actList)
+				{
+					if(obj.data)
+					{
+						tarr.push(obj.data);
+					}
+				}
+				ImageExporter.exportTo(tarr, anmImporter.defaultName);
+			}
+			
+			/** 导出动画文件 */
+			private function exportAnimation():void
+			{
+				var tbyte:ByteArray = new ByteArray();
+				var tarr:Vector.<AnimationAct> = new Vector.<AnimationAct>();
+				for each(var obj:* in actList)
+				{
+					if(obj.data)
+					{
+						tarr.push(obj.data);
+					}
+				}
+				AnimationExporter.exportTo(tarr, anmImporter.defaultName + ".jta");
+			}
+			
+			/** 导出纹理 */
+			private function exportTexture(compress:Boolean=true):void
+			{
+				//生成动作列表
+				var tarr:Vector.<AnimationAct> = new Vector.<AnimationAct>();
+				for each(var obj:* in actList)
+				{
+					if(obj.data)
+					{
+						tarr.push(obj.data);
+					}
+				}
+				if(anmImporter.swfBytes != null){
+					//导出SWF特效
+					SwfExporter.exportTo(tarr, anmImporter.defaultName, anmImporter.swfBytes, compress);
+				}
+				else{
+					//导出普通特效
+					TextureExporter.exportTo(tarr, anmImporter.defaultName, compress, Number(swfQualityTxt.text), exportSwf2.selected);
+				}
+			}
+			
+			/** 打包非压缩纹理 */
+			private function compilerTexture():void
+			{
+				var tcompiler:CompilerTexture = new CompilerTexture();
+				tcompiler.addEventListener(Event.COMPLETE, 
+					function tcompleteHandler(event:Event):void
+					{
+						tcompiler.removeEventListener(Event.COMPLETE, tcompleteHandler);
+						if(tcompiler.output) anmImporter.loadTextureBy(tcompiler.output);
+					}
+				);
+				tcompiler.export();
+			}
+			
+			private var isImagePlaced:Boolean = true;
+			private var lastImagePosition:Point = new Point();
+			//图片改变的话就不要update包围框了，因为每个图片的大小位置是不同的。如果第一次就更新，计算就不准确了。
+			private var imageDelta:Point = new Point();  
+			private function onImageChange(event:Event):void
+			{
+				isImagePlaced = true;
+			}
+			
+			private function onAnimationFrameMouseDown(event:MouseEvent):void
+			{
+				var tbmd:BitmapData = img.source is Bitmap ? img.source.bitmapData : null;
+				if(tbmd == null || tbmd.hitTest(new Point(), 10, new Point(img.mouseX, img.mouseY))){
+					img.startDrag();
+					event.stopPropagation();
+				}
+			}
+			
+			private function onChangeTxtImagePos(event:Event):void
+			{
+				if( event.target == txtImageX ){
+					//img.x-canAxis.width*0.5
+					img.x = int(txtImageX.text)+canAxis.width*0.5;
+				}else if( event.target == txtImageY ){
+					img.y = int(txtImageY.text)+canAxis.height*0.5;
+				}
+				
+				onAnimationFrameMoved();
+			}
+			
+			private function onAnimationFrameMouseUp(event:MouseEvent):void
+			{
+				img.stopDrag();
+				img.x = int(img.x);
+				img.y = int(img.y);
+				
+				onAnimationFrameMoved();
+				event.stopPropagation();
+			}
+			
+			////改变容器大小，并且更新AnimationFrame的位置属性
+			private function onAnimationFrameMoved():void
+			{
+				//更新AnimationFrame位置
+				if(!isImagePlaced){
+					imageDelta.x = img.x - lastImagePosition.x;
+					imageDelta.y = img.y - lastImagePosition.y;
+				}
+				updateFramePos();
+				lastImagePosition.x = img.x;
+				lastImagePosition.y = img.y;				
+				if(isImagePlaced)
+				{
+					isImagePlaced = false;
+				}
+			}
+			
+			[Bindable]
+			private var currTTEffectAct:AnimationAct = null;
+			[Bindable]
+			private var currTTEffectDir:AnimationDir = null;
+			[Bindable]
+			private var currAct:AnimationAct = null;
+			[Bindable]
+			private var currDir:AnimationDir = null;
+			[Bindable]
+			private var currFrame:AnimationFrame = null;
+			[Bindable]
+			private var hasTTEffect:Boolean;
+			private function importCompleteHandler(event:Event):void
+			{
+				//读取tt对应的动作效果tt
+				if( anmImporter.textureFile == null ){
+					hasTTEffect = false;
+					afterLoadTT();
+					return;
+				}
+				
+				ttEffectImporter.unload();
+				var patern:RegExp = /^[123]_[01]_\d*/;
+				var pattern2:RegExp = /^\d*_\d*/;
+				var parentFile:File = anmImporter.textureFile.parent;
+				var ttEffectFile:File
+				var ttName:String = anmImporter.textureFile.name;
+				ttName = ttName.substring(0,ttName.lastIndexOf("."));
+				//if( parentFile.name == "player" ){//解释对应的动作特效tt名称
+					var ret:Object = patern.exec(ttName);
+					var ret2:Object = pattern2.exec(ttName);
+					var ttEffectName:String;
+					var ttEffectPath:String;
+					if( ret || ret2 ){
+						var lRet:Object = (ret!=null?ret:ret2); 
+						ttEffectName = lRet[0]+"_effect.tt";
+						ttEffectPath = parentFile.nativePath+"\\"+ttEffectName;
+						ttEffectFile = new File(ttEffectPath);
+					}
+				//}
+				
+				if( ttEffectFile && ttEffectFile.exists && ttEffectName != anmImporter.textureFile.name ){
+					hasTTEffect = true;
+					ttEffectImporter.loadTextureBy(ttEffectFile);
+				}else{
+					hasTTEffect = false;
+					afterLoadTT();
+				}
+				
+			}
+			
+			/**导入tt动作效果成功**/
+			private function importTTEffectCompleteHandler(event:Event):void
+			{
+				//判断是否有相同的动作方向
+				var tacts:Vector.<AnimationAct> = ttEffectImporter.actList;
+				if( tacts.length!=1 || tacts.length != anmImporter.actList.length ){
+					hasTTEffect = false;
+					Alert.show("动作效果TT的动作数量与动画TT的动作数量不匹配","提示");
+				}
+				
+				if( tacts[0].props.type != anmImporter.actList[0].props.type ){
+					hasTTEffect = false;
+					Alert.show("动作效果TT的动作类型与动画TT的动作类型不匹配","提示");
+				}
+				
+				if( tacts[0].props.dirList.length != anmImporter.actList[0].props.dirList.length ){
+					hasTTEffect = false;
+					Alert.show("动作效果TT的方向数目与动画TT的方向数目不匹配","提示");
+				}
+				
+				if( tacts[0].props.dirList[0].props.dir != anmImporter.actList[0].props.dirList[0].props.dir ){
+					hasTTEffect = false;
+					Alert.show("动作效果TT的方向与动画TT的方向不匹配","提示");
+				}
+				afterLoadTT();
+			}
+			
+			private function afterLoadTT():void
+			{
+				var tacts:Vector.<AnimationAct> = anmImporter.actList;
+				actList.removeAll();
+				actList.addItem({label:"请选择动作", data:null});
+				for each(var tact:AnimationAct in tacts)
+				{
+					actList.addItem({label:tact.props.typeName, data:tact});
+				}
+				
+				canAnimationLayers.removeAllChildren();
+				//canAnimationLayer2.removeAllChildren();
+				changeAnimationAct();
+				
+				this.title = "动画编辑器 - " + anmImporter.defaultName;
+			}
+			
+			/** 参考动画被增加 **/
+			private function onRefAnimationAddHandler(event:AnimationBlenderEvent):void
+			{
+				var lbl:String = event.animationImporter.defaultName;
+				var obj:Object = {label: lbl, data: event.animationImporter};
+				refTextureArrayCollection.addItem(obj);
+				cbRefTexture.selectedItem = obj;
+				var ui:UIComponent = new UIComponent();
+				ui.addChild(anmBlender.getWrapper(event.animationImporter).container);
+				canAnimationLayers.addChild(ui);
+				//刷新参考动作列表
+				//refreshRefAnimationSet(event.animationImporter);
+				//同步
+				if( currAct && currDir )
+					anmBlender.synchronizeAnimation(currAct.props.type,currDir.props.dir,currDir.props.currFrame);
+				/* if(currAct)
+				{
+					synchronizeAnimationAct(currAct);
+				}
+				if(currDir)
+				{
+					synchronizeAnimationDir(currDir);
+				} */
+			}
+			
+			/** 参考动画被移除 **/
+			private function onRefAnimationRemovedHandler(event:AnimationBlenderEvent):void
+			{
+				var ipt:AnimationImporter = event.animationImporter;
+				var index:int = 0;
+				for each(var obj:Object in refTextureArrayCollection)
+				{
+					if(obj.data == ipt)
+					{
+						refTextureArrayCollection.removeItemAt(index);
+						break;
+					}
+					++index;
+				}
+			}
+			
+			/** 所有参考动画被清除 **/
+			private function onRefAnimationRemovedAllHandler(event:AnimationBlenderEvent):void
+			{
+				refTextureArrayCollection.removeAll();
+			}
+			
+			/** 删除选中的参考动画 **/
+			private function onRemoveSelectedRefJtaHandler(event:MouseEvent):void
+			{
+				if(!cbRefTexture.selectedItem || !cbRefTexture.selectedItem.data)
+				{
+					return;
+				}
+				var ipt:AnimationImporter = cbRefTexture.selectedItem.data;
+				anmBlender.remove(ipt);
+			}
+			
+			/** 根据导入器刷新参考动作列表 **/
+			/* private function refreshRefAnimationSet(animationImporter:AnimationImporter):void
+			{
+				refActArrayCollection.removeAll();
+				
+				var tlist:Vector.<AnimationAct> = animationImporter.actList;
+				if(tlist.length == 0)
+				{
+					//无动作
+					return;
+				}
+				for each(var tact:AnimationAct in tlist)
+				{
+					refActArrayCollection.addItem({label:tact.props.typeName, data:tact});
+				}
+				//刷新参考方向列表
+				refreshRefAnimationObject(animationImporter.actList[0]);
+			} */
+			
+			/** 刷新方向列表 **/
+			/* private function refreshRefAnimationObject(act:AnimationAct):void
+			{
+				refDirArrayCollection.removeAll();
+				for each(var tdir:AnimationDir in act.props.dirList)
+				{
+					refDirArrayCollection.addItem({label:tdir.props.dirName, data:tdir});
+				}
+				//刷新动画
+				changeRefAnimationFrameHandler(null);
+			} */
+			
+			/* private function changeRefAnimationFrameHandler(event:Event):void
+			{
+				if(cbRefTexture.selectedItem && cbRefDir.selectedItem && cbRefAct.selectedItem)
+				{
+					anmBlender.specifyAnimation(cbRefTexture.selectedLabel, cbRefAct.selectedItem.data, cbRefDir.selectedItem.data);
+				}
+			} */
+			
+			/** 同步所有参考动画 **/
+			/* private function onSynAllRefAnimationHandler(event:MouseEvent):void
+			{
+				var frame:int = 0;
+				
+				if(cboType.selectedItem && cboType.selectedItem.data)
+				{
+					var tact:AnimationAct = cboType.selectedItem.data;
+					var type:int = 0;
+					type = tact.props.type;
+					synchronizeAnimationAct(tact);
+				}
+				
+				if(cboDirection.selectedItem && cboDirection.selectedItem.data)
+				{
+					var tdir:AnimationDir = cboDirection.selectedItem.data;
+					var dir:int = 0;
+					dir = tdir.props.dir;
+					synchronizeAnimationDir(tdir);
+				}
+				
+				if(currDir)
+				{
+					frame = currDir.props.currFrame;
+					anmBlender.synchronizeFrameIndex(frame, currDir.frames.length);
+				}
+				
+			} */
+			
+			private var curTTEffectFrame:int;
+			private var ttEffectDelay:uint;
+			private var totalDelay:uint;
+			private var frameIntv:uint;
+			private var frameShape:Shape;
+			private var _t:int;
+			private var startF:int;
+			private var endF:int;
+			private var delay:int;
+			/**通过时间来控制帧播放
+			 * @param startF 起始帧
+			 * @param endF 结束帧
+			 * @param delay 帧持续时间(毫秒)
+			 * **/
+			private function updateFrameByTime(startF:int,endF:int):void
+			{
+				if( frameShape == null){
+					frameShape = new Shape();
+					frameShape.addEventListener(Event.ENTER_FRAME,onFrameStep);	
+				}
+				this.startF = startF;
+				this.endF = endF;
+				this.delay = delay;
+				curTTEffectFrame = ttEffectDelay = totalDelay = 0;
+				currAct.props.loopsTemp = currAct.props.loops;
+				_t = getTimer();
+			}
+			/**更新攻击特效tt帧 **/
+			private function onFrameStep(e:*):void
+			{
+				if( currAct==null )
+					return;
+				
+				if( !isAllowPlayAnimation )
+					return;
+				
+				var curT:int = getTimer();
+				var dt:int = curT - _t;
+				_t = curT;
+				var curDelay:int;
+				totalDelay+=dt;
+				curDelay = currAct.props.framesSpeed[startF];
+				
+				if( totalDelay > curDelay ){
+					++startF;
+					if( currAct.props.loopsTemp > 0 && startF>currAct.props.loopEnd ){
+						startF = currAct.props.loopStart;
+						--currAct.props.loopsTemp;
+					}else if(startF>endF){
+						currAct.props.loopsTemp = currAct.props.loops;
+						/* if( hasTTEffect && currTTEffectAct && currTTEffectAct.props.playeType == 1 &&curTTEffectFrame<currTTEffectAct.props.frameCount )
+							startF = endF;
+						else */
+						startF = 0;
+						if( hasTTEffect && currTTEffectAct && currTTEffectAct.props.playeType == 1){
+							currTTEffectAct.props.loopsTemp = currTTEffectAct.props.loops;
+							ttEffectDelay = dt = curTTEffectFrame = 0;
+						}
+					}
+					totalDelay = 0;
+				}
+				
+				if( hasTTEffect && currTTEffectAct){
+					if(currTTEffectAct.props.playeType == 0){//同步播放
+						var ind:int = Math.ceil(startF) - int(ttEffectStartFrame);
+						if( ind < 0 ){
+							currTTEffAnimationBitmap.bitmapData = null;
+						}else{
+							currTTEffectDir.updateFrame2(ind);
+							currTTEffAnimationBitmap.bitmapData = currTTEffectDir.bitmapData;
+						}
+					}else{//独立播放
+						/* if( startF == 0 && totalDelay == 0 ){//动作tt播放完，重新开始播放独立的动作特效
+							currTTEffectAct.props.loopsTemp = currTTEffectAct.props.loops;
+							ttEffectDelay = dt = curTTEffectFrame = 0;
+						} */
+						
+						if( startF >= int(ttEffectStartFrame) && curTTEffectFrame<currTTEffectAct.props.frameCount){
+							ttEffectDelay += dt;
+							if( ttEffectDelay > currTTEffectAct.props.framesSpeed[curTTEffectFrame] ){//当前帧播完，跳到下帧
+								curTTEffectFrame++;
+								if( currTTEffectAct.props.loopsTemp > 0 && curTTEffectFrame>currTTEffectAct.props.loopEnd ){
+									//设置动作效果的循环播放
+									curTTEffectFrame = currTTEffectAct.props.loopStart;
+									--currTTEffectAct.props.loopsTemp;
+								}else if( curTTEffectFrame>=currTTEffectAct.props.frameCount ){
+									//动作效果播完了
+									/* currTTEffectAct.props.loopsTemp = currTTEffectAct.props.loops;
+									startF = curTTEffectFrame = 0; */
+								}
+								ttEffectDelay = 0;	
+							}
+							currTTEffectDir.updateFrame2(curTTEffectFrame);
+							currTTEffAnimationBitmap.bitmapData = currTTEffectDir.bitmapData;
+						}else{//来到这里，是由于 独立特效播放完了
+							currTTEffAnimationBitmap.bitmapData = null;
+						}
+					}
+					currTTEffAnimationBitmap.x = currTTEffectDir.x+currDir.props.ttEffectPoint.x;
+					currTTEffAnimationBitmap.y = currTTEffectDir.y+currDir.props.ttEffectPoint.y;
+				}
+			}
+			
+			
+			private var count:int = 0;
+			private var wait:int = 0;
+			/**更新主tt帧**/
+			private function onFrameEnter(event:Event):void
+			{
+				if(!isAllowPlayAnimation || !currDir || ! currAct)
+				{
+					return;
+				}
+				
+				//同步帧
+				//if( currAct && currDir )
+					anmBlender.synchronizeAnimation(currAct.props.type,currDir.props.dir,Math.ceil(startF));
+				//anmBlender.synchronizeFrameIndex(currDir.props.currFrame, currDir.frames.length);
+				count = 0;
+				try{				
+					currDir.updateFrame2(Math.ceil(startF));
+					currAnimationBitmap.x = currDir.x;
+					currAnimationBitmap.y = currDir.y;
+					/* if( currAct.props.symmetry == AnimationAct.SYNMMETRY_LR || currAct.props.symmetry == AnimationAct.SYNMMETRY_UD){
+						//设置镜像图片
+						var scaleX:int = currAct.props.symmetry == AnimationAct.SYNMMETRY_LR?-1:1;
+						var scaleY:int = currAct.props.symmetry == AnimationAct.SYNMMETRY_UD?-1:1;
+						var gapW:int = currDir.synBitmapData.width;
+						var gapH:int = currDir.synBitmapData.height;
+						var synX:Number = 0;
+						var synY:Number = 0;
+						if( currAct.props.symmetry == AnimationAct.SYNMMETRY_LR ){
+							synX = gapW;
+							currAnimationBitmap.bitmapData = new BitmapData(2*gapW,gapH,true,0x00000000);
+						}else{
+							synY = gapH;
+							currAnimationBitmap.bitmapData = new BitmapData(gapW,2*gapH,true,0x00000000);
+						}
+						
+						var w:Number = Math.max(Math.abs(currDir.x -  currDir.x*scaleX),currDir.synBitmapData.width);
+						var h:Number = Math.max(Math.abs(currDir.y -  currDir.y*scaleY),currDir.synBitmapData.height);
+						currAnimationBitmap.bitmapData.draw(currDir.bitmapData);
+						currAnimationBitmap.bitmapData.draw(currDir.synBitmapData,new Matrix(1,0,0,1,synX,synY));
+					}else{
+						currAnimationBitmap.bitmapData = currDir.bitmapData;	
+					} */
+					currAnimationBitmap.bitmapData = currDir.bitmapData;
+					//anmBlender.updateAllAnimation();
+				}catch(e:Error){}
+			}
+			
+			private function changeAnimationAct():void
+			{
+				var tlastDir:AnimationDir = currDir;
+				//canAnimationLayer2.removeAllChildren();
+				canAnimationLayers.removeAllChildren();
+				dirList.removeAll();
+				//
+				currTTEffectAct = currAct = null;
+				currTTEffectDir = currDir = null;
+				synmmetryImg.source = img.source = null;
+				if(!cboType.selectedItem.data)
+				{
+					return;
+				}
+				currAct = AnimationAct(cboType.selectedItem.data);
+				
+				if( hasTTEffect ){
+					currTTEffectAct = ttEffectImporter.actList[anmImporter.actList.indexOf(currAct)];
+					currTTEffectAct.props.loopsTemp = currTTEffectAct.props.loops; 
+				}
+					
+				
+				determineSpeedMode(currAct);
+				
+				//同步动作
+				//synchronizeAnimationAct(currAct);
+				//自动计算包围框
+				var tdir:AnimationDir = null;
+				if(currAct.props.rect.isNull())
+				{
+					for each(tdir in currAct.props.dirList)
+					{
+						autoCalcDirRect(tdir, false);
+					}
+					autoCalcActRect(currAct);
+				}
+				//填充方向列表
+				for each(tdir in currAct.props.dirList)
+				{
+					dirList.addItem({label:tdir.props.dirName, data:tdir});
+				}
+				refreshActInfo(currAct);
+				//更新frameSlide的最大值
+				frameSlide.maximum = currAct.props.frameCount - 1;
+				//如果有选定方向的话，还原为同一方向
+				if(tlastDir){
+					for(var i:int = 0; i < dirList.length; ++i)
+					{
+						tdir = dirList[i].data;
+						if(tdir.props.dir == tlastDir.props.dir)
+						{
+							cboDirection.selectedIndex = i;
+							changeAnimationDir(tdir);
+							break;
+						}
+					}
+				}
+				else if(dirList.length){
+					//选择第一帧
+					tdir = dirList[0].data;
+					cboDirection.selectedIndex = 0;
+					changeAnimationDir(tdir);
+				}
+				cboSymmetry.selectedIndex = currAct.props.symmetry; 
+				cboPlay.selectedIndex = currAct.props.playeType;
+				//cboIsTTEffect.selectedIndex = currAct.props.isTTEffect;
+				startF = 0;
+				endF = currDir.frames.length-1;
+				if( currAct && currDir )
+					anmBlender.synchronizeAnimation(currAct.props.type,currDir.props.dir,currDir.props.currFrame);
+				updateFrameByTime(startF,endF);
+			}
+			
+			private function resizeActRect():void
+			{
+				if(!currAct)
+				{
+					return;
+				}
+				
+				canAnimationRect_height = currAct.props.rect.height;
+				canAnimationRect_width = currAct.props.rect.width;
+				var pos:Point = modelToLocal(new Point(currAct.props.rect.x, currAct.props.rect.y));
+				canAnimationRect.x = pos.x;
+				canAnimationRect.y = pos.y;
+			}
+			
+			/* private function synchronizeAnimationAct(act:AnimationAct):void
+			{
+				for each(var tobj:Object in refActArrayCollection)
+				{
+					var tact:AnimationAct = tobj.data;
+					if(act.props.type == tact.props.type)
+					{
+						cbRefAct.selectedItem = tobj;
+						break;
+					}
+				}
+				
+				anmBlender.synchronizeAnimationAct(act.props.type);
+			}
+			
+			private function synchronizeAnimationDir(dir:AnimationDir):void
+			{
+				for each(var tobj:Object in refDirArrayCollection)
+				{
+					var tdir:AnimationDir = tobj.data;
+					if(dir.props.dir == tdir.props.dir)
+					{
+						cbRefDir.selectedItem = tobj;
+						break;
+					}
+				}
+				
+				anmBlender.synchronizeAnimationDir(dir.props.dir);
+			} */
+			
+			[Bindable]
+			private var dunGridArr:Array = new Array();
+			private function refreshActInfo(animSet:AnimationAct):void
+			{
+				if(!animSet)
+				{
+					return;
+				}
+				//更新类型矩阵信息
+				txtAnimationX.text = String(animSet.props.rect.x);
+				txtAnimationY.text = String(animSet.props.rect.y);
+				txtCanARWidth.text = String(animSet.props.rect.width);
+				txtCanARHeight.text = String(animSet.props.rect.height);
+				txtBaseDunTime.text = String(animSet.props.baseDunDelay);
+				txtYinchangFrame.text = String(animSet.props.yinchangFrame);
+				txtAttackFrame.text = String(animSet.props.attackFrame);
+				
+				//其他
+				//txtRepeatCount.text = String(animSet.props.repeatCount);
+				//txtPlaySpeed.text = String(animSet.props.speed);
+				dunGridArr.splice(0,dunGridArr.length);
+				dunGrid.dataProvider = dunGridArr;
+				for( var i:int=0;i<animSet.props.frameCount;i++ ){
+					//dunGridArr.push({frame:i,normal:animSet.props.framesSpeed[i],showDelay:true,angle:animSet.props.hurtAngles[i]});
+					dunGridArr.push({frame:i,normal:animSet.props.framesSpeed[i],showDelay:true});
+				}
+				/* txtHurtScaleX.text = String(animSet.props.hurtScaleX);
+				txtHurtScaleY.text = String(animSet.props.hurtScaleY); */
+				txtLoopStart.text = String(animSet.props.loopStart);
+				txtLoopEnd.text = String(animSet.props.loopEnd);
+				txtLoops.text = String(animSet.props.loops);
+				animSet.props.loopsTemp = animSet.props.loops; 
+				//重绘包围盒
+				resizeActRect();
+			}
+			
+			private function refreshDirInfo(dir:AnimationDir):void
+			{
+				if(!dir)
+				{
+					return;
+				}
+				//包围框
+				canDirObjRect_height = currDir.props.rect.height;
+				canDirObjRect_width = currDir.props.rect.width;
+				canDirObjRect.x = currDir.props.rect.x + canAxis.width*0.5;
+				canDirObjRect.y = currDir.props.rect.y + canAxis.height*0.5;
+				//攻击点与翅膀安装点坐标
+				canFirePointRect.x = currDir.props.firePoint.x + canAxis.width*0.5;
+				canFirePointRect.y = currDir.props.firePoint.y + canAxis.height*0.5;
+				canWingPointRect.x = currDir.props.wingPoint.x + canAxis.width*0.5;
+				canWingPointRect.y = currDir.props.wingPoint.y + canAxis.height*0.5;
+				ttEffectRect.x = currDir.props.ttEffectPoint.x + canAxis.width*0.5;
+				ttEffectRect.y = currDir.props.ttEffectPoint.y + canAxis.height*0.5;
+				ttEffectStartFrame = ""+currDir.props.ttEffectStartFrame;
+				//txtTTEffectStartFrame.text = currDir.props.ttEffectStartFrame+"";
+			}
+			
+			private function changeAnimationActHandler(event:DropdownEvent):void
+			{
+				img.source = null;
+				changeAnimationAct();
+			}
+			
+			private function changeAnimationDirHandler(event:DropdownEvent):void
+			{
+				if( cboDirection.selectedItem == null )
+					return;
+				//var tdir:AnimationDir = AnimationDir(cboDirection.selectedItem.data.duplicate());
+				var tdir:AnimationDir = AnimationDir(cboDirection.selectedItem.data);
+				changeAnimationDir(tdir);
+				frameSlide.value = 0;
+			}
+			
+			private function frameSelectHandler(event:SliderEvent):void
+			{
+				changeFrame(event.value);
+			}
+			
+			private function determainLoop():void
+			{
+				if( currAct ){
+					if( chkShowDun.selected ){
+						startF = currAct.props.yinchangFrame+1;
+						endF = currAct.props.attackFrame;
+					}else{
+						startF = 0;
+						endF = currAct.props.frameCount-1; 
+					}
+				}
+				
+			}
+			
+			private function gridClick(event:ListEvent):void
+			{
+				frameSlide.value = event.rowIndex;
+				changeFrame(event.rowIndex);
+			}
+			
+			//可以被子窗口调用
+			public function changeFrame(index:int):void
+			{
+				if(!currDir){
+					return;
+				}
+				
+				frameSlide.value = index;
+				currFrame = currDir.frames[index];
+				img.source = DisplayObjectUtil.getBitmapFromDisplayObject(currFrame.getDisplayObject());
+				
+				var pos:Point = modelToLocal(new Point(currFrame.props.rect.x, currFrame.props.rect.y));
+				img.x = pos.x;
+				img.y = pos.y;
+				
+				txtImageX.text = String(currFrame.props.rect.x);
+				txtImageY.text = String(currFrame.props.rect.y);
+				
+				if( !currTTEffectDir )
+					return;
+				
+				index =	index-int(ttEffectStartFrame);
+				if( index<0 ){
+					ttEffectImg.source = null;
+					return;
+				}
+				
+				if( currTTEffectDir.frames.length > index ){
+					var currTTEffectFrame:AnimationFrame = currTTEffectDir.frames[index]; 
+					ttEffectImg.source = DisplayObjectUtil.getBitmapFromDisplayObject(currTTEffectFrame.getDisplayObject());
+					pos = modelToLocal(new Point(currTTEffectFrame.props.rect.x, currTTEffectFrame.props.rect.y));
+					ttEffectImg.x = pos.x+currDir.props.ttEffectPoint.x; 
+					ttEffectImg.y = pos.y+currDir.props.ttEffectPoint.y;
+				}else{
+					ttEffectImg.source =null;
+				}
+					
+				
+			}
+			
+			/**
+			 * 改变AnimationObject,其实就是改变方向  
+			 **/
+			private var currAnimationBitmap:Bitmap = new Bitmap();
+			private var currTTEffAnimationBitmap:Bitmap = new Bitmap();
+			private function changeAnimationDir(dir:AnimationDir):void
+			{
+				currDir = dir;
+				
+				if( hasTTEffect )
+					currTTEffectDir = currTTEffectAct.props.dirList[currAct.props.dirList.indexOf(dir)];
+				
+				currDir.props.currFrame = 0;
+				
+				//加入到动画Canvas
+				var ui:UIComponent;
+				canAnimationLayers.removeAllChildren();
+				//canAnimationLayer2.removeAllChildren();
+				if(currAnimationBitmap.stage == null)
+				{
+					ui = currAnimationBitmap.parent is UIComponent ? (currAnimationBitmap.parent as UIComponent) : new UIComponent();
+					if(currAnimationBitmap.parent != ui)
+					{
+						ui.addChild(currAnimationBitmap);
+						//ui.x = AnimationObjectPosX;
+						//ui.y = AnimationObjectPosY;
+					}
+					canAnimationLayers.addChild(ui);
+					//canAnimationLayer2.addChild(ui);
+				}
+				
+				//canAnimationLayer3.removeAllChildren();
+				if(currTTEffAnimationBitmap.stage == null)
+				{
+					ui = currTTEffAnimationBitmap.parent is UIComponent ? (currTTEffAnimationBitmap.parent as UIComponent) : new UIComponent();
+					if(currTTEffAnimationBitmap.parent != ui)
+					{
+						ui.addChild(currTTEffAnimationBitmap);
+						//ui.x = AnimationObjectPosX;
+						//ui.y = AnimationObjectPosY;
+					}
+					canAnimationLayers.addChild(ui);
+					//canAnimationLayer3.addChild(ui);
+				}
+				
+				//刷新坐标位置
+				refreshDirInfo(currDir);
+				//将第一帧加到img
+				if(dir.frames.length)
+				{
+					changeFrame(0);
+				}
+				if(!isAllowPlayAnimation)
+				{
+					playAnimationHandler(null);
+				}
+				if( currAct && currDir )
+					anmBlender.synchronizeAnimation(currAct.props.type,currDir.props.dir,currDir.props.currFrame);
+				//synchronizeAnimationDir(currDir);
+			}
+			
+			private function updateFramePos():void
+			{
+				if(!currFrame)
+				{
+					return;
+				}
+				
+				if(imageDelta.length == 0)
+				{
+					return;
+				}
+				
+				if(wayToMove.selection == moveAllAnimations)
+				{
+					syncAllAnimationAct(imageDelta);
+				}
+				else if(wayToMove.selection == moveOneAnimationSet){
+					syncOneAnimationAct(currAct, imageDelta);
+				}
+				else if(wayToMove.selection == moveOneAnimationObject){
+					syncOneAnimationDir(currDir, imageDelta);
+				}
+				else if(wayToMove.selection == moveAllAnimationsByDir){
+					syncAllAnimationSetByDir(currDir.props.dir, imageDelta);
+				}
+				else{
+					syncOneFrame(currFrame, imageDelta);
+				}
+				
+				refreshActInfo(currAct);
+				refreshDirInfo(currDir);
+				imageDelta.x = imageDelta.y = 0;
+			}
+			
+			//全部同步
+			private function syncAllAnimationAct(delta:Point):void
+			{
+				var allAnimations:Vector.<AnimationAct> = anmImporter.actList;
+				for each(var animSet:AnimationAct in allAnimations)
+				{
+					//遍历所有帧,加上鼠标偏移即可
+					syncOneAnimationAct(animSet, delta);
+				}
+			}
+			
+			//同步一个动作
+			private function syncOneAnimationAct(act:AnimationAct, delta:Point):void
+			{
+				for each(var tdir:AnimationDir in act.props.dirList)
+				{
+					syncOneAnimationDir(tdir, delta);
+				}
+				act.props.rect.x += delta.x;
+				act.props.rect.y += delta.y;
+				autoCalcActRect(act, false);
+			}
+			
+			//同步同一方向的所有动作
+			private function syncAllAnimationSetByDir(dir:int, delta:Point):void
+			{
+				for each(var tact:AnimationAct in anmImporter.actList)
+				{
+					for each(var tdir:AnimationDir in tact.props.dirList)
+					{
+						if(tdir.props.dir == dir)
+						{
+							syncOneAnimationDir(tdir, delta);
+						}
+					}
+					autoCalcActRect(tact, false);
+				}
+			}
+			
+			//同步一个方向
+			private function syncOneAnimationDir(dir:AnimationDir, delta:Point):void
+			{
+				for each(var tf:AnimationFrame in dir.frames)
+				{
+					syncOneFrame(tf, delta);
+				}
+				dir.props.rect.x += delta.x;
+				dir.props.rect.y += delta.y;
+				autoCalcDirRect(dir, false);
+			}
+			
+			//只移动一帧
+			private function syncOneFrame(animFrame:AnimationFrame, delta:Point):void
+			{
+				animFrame.props.rect.x += delta.x;
+				animFrame.props.rect.y += delta.y;
+			}
+			
+			private function firePointMoveHandler(event:Event):void
+			{
+				if(!currDir)
+				{
+					return;
+				}		
+				var pos:Point = localToModel(new Point(canFirePointRect.x, canFirePointRect.y));
+				currDir.props.firePoint.x = pos.x;
+				currDir.props.firePoint.y = pos.y;
+			}
+			
+			private function wingPointMoveHandler(event:Event):void
+			{
+				if(!currDir)
+				{
+					return;
+				}		
+				var pos:Point = localToModel(new Point(canWingPointRect.x, canWingPointRect.y));
+				currDir.props.wingPoint.x = pos.x;
+				currDir.props.wingPoint.y = pos.y;
+			}
+			
+			private function ttEffectPointMoveHandler(event:Event):void
+			{
+				if(!currDir)
+				{
+					return;
+				}		
+				var pos:Point = localToModel(new Point(ttEffectRect.x, ttEffectRect.y));
+				var deltaX:int = currDir.props.ttEffectPoint.x - pos.x;
+				var deltaY:int = currDir.props.ttEffectPoint.y - pos.y;
+				currDir.props.ttEffectPoint.x = pos.x;
+				currDir.props.ttEffectPoint.y = pos.y;
+				
+				ttEffectImg.x -= deltaX;
+				ttEffectImg.y -= deltaY;
+				/* 
+				currTTEffAnimationBitmap.x -= deltaX;
+				currTTEffAnimationBitmap.y -= deltaY; */
+			}
+			
+			/** 计算当前动作最大包围框 **/
+			private function autoCalcActRect(act:AnimationAct, updateUI:Boolean=true):void
+			{				
+				var tleft:Number = Number.POSITIVE_INFINITY;
+				var tright:Number = Number.NEGATIVE_INFINITY;
+				var ttop:Number = Number.POSITIVE_INFINITY;
+				var tbottom:Number = Number.NEGATIVE_INFINITY;
+				
+				for each(var tdir:AnimationDir in act.props.dirList)
+				{
+					if(tdir.props.rect.x < tleft)
+					{
+						tleft = tdir.props.rect.x;
+					}
+					if(tdir.props.rect.y < ttop)
+					{
+						ttop = tdir.props.rect.y;
+					}
+					if(tdir.props.rect.x + tdir.props.rect.width > tright)
+					{
+						tright = tdir.props.rect.x + tdir.props.rect.width;
+					}
+					if(tdir.props.rect.y + tdir.props.rect.height > tbottom)
+					{
+						tbottom = tdir.props.rect.y + tdir.props.rect.height;
+					}
+				}
+				
+				act.props.rect.x = tleft;
+				act.props.rect.y = ttop;
+				act.props.rect.width = tright - tleft;
+				act.props.rect.height = tbottom - ttop;
+				if(updateUI)
+				{
+					refreshActInfo(currAct);
+				}
+			}
+			
+			/**计算当前方向最大的包围框**/
+			private function autoCalcDirRect(dir:AnimationDir, updateUI:Boolean=true):void
+			{
+				var tleft:Number = Number.POSITIVE_INFINITY;
+				var tright:Number = Number.NEGATIVE_INFINITY;
+				var ttop:Number = Number.POSITIVE_INFINITY;
+				var tbottom:Number = Number.NEGATIVE_INFINITY;
+				
+				for each(var tf:AnimationFrame in dir.frames)
+				{
+					if(tf.props.rect.x < tleft)
+					{
+						tleft = tf.props.rect.x;
+					}
+					if(tf.props.rect.y < ttop)
+					{
+						ttop = tf.props.rect.y;
+					}
+					if(tf.props.rect.x + tf.props.rect.width > tright)
+					{
+						tright = tf.props.rect.x + tf.props.rect.width;
+					}
+					if(tf.props.rect.y + tf.props.rect.height > tbottom)
+					{
+						tbottom = tf.props.rect.y + tf.props.rect.height;
+					}
+				}
+				
+				dir.props.rect.x = tleft;
+				dir.props.rect.y = ttop;
+				dir.props.rect.width = tright - tleft;
+				dir.props.rect.height = tbottom - ttop;
+				if(updateUI)
+				{
+					refreshDirInfo(currDir);	
+				}
+			}
+			
+			private function openFrameSelectWindowHandler(event:MouseEvent):void
+			{
+				if(currDir == null)
+				{
+					return;
+				}
+				if(frameSelectWindow == null)
+				{
+					frameSelectWindow = new FrameSelectWindow();
+					frameSelectWindow.addEventListener(AnimationFrameEvent.ImageChange, changeFrameImageHandler);
+					frameSelectWindow.addEventListener(AnimationFrameEvent.DeleteFrame, deleteFrameHandler);
+				}
+				frameSelectWindow.showCloseButton = true;
+				frameSelectWindow.characterEditor = this;
+				frameSelectWindow.animationDir = currDir;
+				//
+				PopUpManager.addPopUp(frameSelectWindow,this,true);
+				PopUpManager.centerPopUp(frameSelectWindow); 
+			}
+			
+			private function changeFrameImageHandler(event:AnimationFrameEvent):void
+			{
+				if(!currDir)
+				{
+					return;
+				}
+				for(var i:int = 0; i < currDir.frames.length; i+=1)
+				{
+					if(currDir.frames[i] == event.frame)
+					{
+						currDir.frames[i].changeDisplayObject(event.frame.getDisplayObject());
+						changeFrame(i);
+						break;
+					}
+				}
+				//不允许保存属性
+				anmImporter.textureFile = null;
+			}
+			
+			private function deleteFrameHandler(event:AnimationFrameEvent):void
+			{
+				var af:AnimationFrame = event.frame;
+				var found:Boolean = false;
+				for(var i:int = 0; i < currDir.frames.length; i+=1)
+				{
+					if(currDir.frames[i] == event.frame)
+					{
+						found = true;
+						break;
+					}
+				}
+				if(!found)
+				{
+					Alert.show("不能删除这一帧，动作类型可能已经被改变!");
+					return;
+				}
+				//删除关联的
+				for each(var tdir:AnimationDir in currAct.props.dirList)
+				{
+					af = tdir.frames[i];
+					tdir.removeFrame(af);
+					autoCalcDirRect(tdir, tdir.props == currDir.props);
+				}
+				currAct.props.removeFrame(i);
+				autoCalcActRect(currAct);
+				changeAnimationAct();
+				//不允许保存属性
+				anmImporter.textureFile = null;
+			}
+			
+			private var isAllowPlayAnimation:Boolean = false;
+			private function playAnimationHandler(event:MouseEvent):void
+			{
+				isAllowPlayAnimation = !isAllowPlayAnimation;
+				btnPlay.label = isAllowPlayAnimation ? "停止播放" : "开始播放";
+			}
+			
+			private function refreshAnimationHandler(event:MouseEvent):void
+			{
+				if(currDir)
+				{					
+					determineSpeedMode(currDir.props.act);
+				}
+			}
+			
+			private function determineSpeedMode(act:AnimationAct):void
+			{
+				//检查帧速度，设定播放模式
+				/* var framesSpeed:Array = act.props.framesSpeed;
+				var lastFrameSpeed:int = Math.min(framesSpeed[0], act.props.speed);
+				act.props.speedMode = AnimationAct.CONST_SPEED_MODE;
+				for(var i:int = 1; i < framesSpeed.length; ++i)
+				{
+					framesSpeed[i] = Math.min(framesSpeed[i], act.props.speed);
+					if(framesSpeed[i] != lastFrameSpeed)
+					{
+						act.props.speedMode = AnimationAct.VAR_SPEED_MODE;
+					}
+					lastFrameSpeed = framesSpeed[i];
+				}
+				//如果是常速模式，则设定变速项为常速，保持数据完整
+				if(act.props.speedMode == AnimationAct.CONST_SPEED_MODE)
+				{
+					for(var j:int = 0; j < framesSpeed.length; ++j)
+					{
+						framesSpeed[j] = act.props.speed;
+					}
+				} */
+			}
+			
+			private function autoProcessImagesHandler(event:MouseEvent):void
+			{
+				//看看有没有导入动作
+				if(!anmImporter || !anmImporter.actList.length)
+				{
+					Alert.show("没有导入任何动作");
+					return;
+				}			
+				//获得关键色
+				var tcolor:Number = Number(keyColorInput.text);
+				if(isNaN(tcolor))
+				{
+					Alert.show("关键色不合法");
+					return;
+				}
+				
+				var tframes:Array = [];
+				//每一个状态:行走、攻击
+				for each(var tact:AnimationAct in anmImporter.actList)
+				{
+					//每一个方向
+					for each(var tdir:AnimationDir in tact.props.dirList)
+					{
+						//						(new AnimationFrameRipper(tdir, tcolor)).ridAllAnimationFrame();
+						tframes.push(new AnimationFrameRipper(tdir, tcolor));
+						tframes.push(tdir);
+						//						autoCalcDirRect(tdir, false);
+					}	
+					
+					tframes.push(tact);
+					//					autoCalcActRect(tact, false);
+				}
+				
+				var tloading:LoadingInfo = LoadingInfo.Show(FlexGlobals.topLevelApplication as DisplayObject, tframes.length);
+				var tloadNum:int = 0;
+				var ttimer:Timer = new Timer(10, 2);
+				ttimer.addEventListener(TimerEvent.TIMER_COMPLETE,
+					function ttimerHandler(e:TimerEvent):void
+					{
+						if(tframes.length < 1){
+							//完成了
+							refreshActInfo(currAct);
+							refreshDirInfo(currDir);
+							changeFrame(0);
+							
+							//不再允许保存单个属性
+							anmImporter.textureFile = null;
+							
+							ttimer.removeEventListener(TimerEvent.TIMER_COMPLETE, ttimerHandler);
+							tloading.Hide();
+							return;
+						}
+						
+						tloadNum++;
+						tloading.setValue(tloadNum);
+						//
+						var tel:* = tframes.shift();
+						if(tel is AnimationFrameRipper){
+							(tel as AnimationFrameRipper).ridAllAnimationFrame();
+						}
+						else if(tel is AnimationDir){
+							autoCalcDirRect(tel, false);
+						}
+						else if(tel is AnimationAct){
+							autoCalcActRect(tel, false);
+						}
+						//再次启动
+						ttimer.start();
+						e.updateAfterEvent();
+					}
+				);
+				//启动
+				ttimer.start();
+			}
+			
+			private var isAllowClose:Boolean = false;
+			private function onClose(event:Event):void
+			{
+				if(!isAllowClose){
+					event.preventDefault();
+				}
+				var oThis:WindowedApplication = this;
+				Alert.show("  确定关闭动画编辑器吗?  ", "提示", Alert.YES|Alert.NO, this, function (ce:CloseEvent):void{
+					if(ce.detail == Alert.YES)
+					{
+						isAllowClose = true;
+						oThis.exit();
+					}
+				});
+			}
+			
+			private var configDirFile:File;
+			private function setupConfigRootPath():void
+			{
+				if( configDirFile ==null ){
+					configDirFile = new File();
+					configDirFile.addEventListener(Event.SELECT,selectConfHandler);
+				}
+				configDirFile.browseForDirectory("选择配置读取根目录");
+			}
+			
+			private function selectConfHandler(e:Event):void
+			{
+				LocalStoreUtil.save("configRootPath",configDirFile.nativePath);
+				txtConfRootPath.text = configDirFile.nativePath;
+			}
+			
+			private function exportTTConf():void
+			{
+				if( txtConfRootPath.text == null || txtConfRootPath.text == "" ){
+					Alert.show("请先选择读取配置的根目录");
+					return;
+				}
+				var ret:Dictionary = new Dictionary();
+				anmImporter.extractConfig(txtConfRootPath.text,ret);
+				TextureExporter.saveTTConfig(txtConfRootPath.text,ret);
+				Alert.show("导出配置成功");
+			}
+			
+			private function checkUpdate(event:MouseEvent):void
+			{
+				//请求服务器
+				updater.checkUpdate(appConfig.updateServer, event == null);
+			}
+			
+			private var bgSelectWindow:BgSelectWindow;
+			private function openBgSelectWindowHandler(event:MouseEvent):void
+			{
+				bgSelectWindow = new BgSelectWindow();
+				bgSelectWindow.addEventListener(FrameSelectEvent.FRAME_SELECTED, onReferenceFrameChange);
+				bgSelectWindow.addEventListener(FrameSelectEvent.FRAME_ALPHA_CHANGED, onReferenceFrameAlphaChange);
+				bgSelectWindow.open();
+				bgSelectWindow.move(canCharacterActions.x, canCharacterActions.y + 80);
+			}
+			
+			private function onReferenceFrameChange(event:FrameSelectEvent):void
+			{
+				refImg.source = event.animationFrame;
+				refImg.x = event.animationFrame.props.rect.x + canAxis.width*0.5;
+				refImg.y = event.animationFrame.props.rect.y + canAxis.height*0.5;
+			}
+			
+			private function onReferenceFrameAlphaChange(event:FrameSelectEvent):void
+			{
+				refImg.alpha = event.alphaValue;
+				refImageAlphaSlide.value = event.alphaValue;
+			}
+			
+			private static const ANM_FOLDER:String = "BG_AMN_FOLDER";
+			private static const ANM_FILTERS:Array = [new FileFilter("纹理文件", "*.tt")];//new FileFilter("动画文件", "*.jta"),
+			private function loadAnmConfigHandler(event:MouseEvent):void
+			{
+				if(configImporter){
+					configImporter.unload();
+					configImporter = null;
+				}
+				configImporter = new AnimationImporter();
+				configImporter.addEventListener(ImporterEvent.ImportComplete, 
+					function timportCompleteHandler(event:ImporterEvent):void
+					{
+						configImporter.removeEventListener(ImporterEvent.ImportComplete, timportCompleteHandler);
+						anmConfigSrc.text = configImporter.defaultName;
+					});
+				
+				var tfile:File = new File(LocalStoreUtil.read(ANM_FOLDER));
+				tfile.browseForOpen("选择动画文件", ANM_FILTERS);
+				tfile.addEventListener(Event.SELECT, 
+					function tanmSelectHandler(e:Event):void
+					{
+						LocalStoreUtil.save(ANM_FOLDER, tfile.parent.nativePath);
+						tfile.removeEventListener(Event.SELECT, tanmSelectHandler);
+						
+						var tarr:Array = tfile.name.split(".");
+						var text:String = tarr.length > 1 ? tarr.pop() : "";
+						if(text.toLowerCase() == "jta"){
+							configImporter.loadAnmBy(tfile);
+						}
+						else{
+							configImporter.loadTextureBy(tfile);
+						}
+					}
+				);
+			}
+			
+			private function applyAnmConfigHandler(event:MouseEvent):void
+			{
+				if(!configImporter || !anmImporter)
+				{
+					Alert.show("没有加载任何动画配置文件或者没有被编辑的动画文件！");
+					return;
+				}
+				for each(var tact:AnimationAct in configImporter.actList)
+				{
+					for each(var tact2:AnimationAct in anmImporter.actList)
+					{
+						if(tact.props.type == tact2.props.type)
+						{
+							tact2.copyProps(tact);
+						}
+					}
+				}
+				
+				refreshActInfo(currAct);
+				refreshDirInfo(currDir);
+			}
+			
+			private function selectBgImageHandler(event:MouseEvent):void
+			{
+				var tfile:File = new File(LocalStoreUtil.read("backgroundImage"));
+				backgroundImage.source = null;
+				tfile.addEventListener(Event.SELECT, 
+					function tselectHandler(event:Event):void
+					{
+						LocalStoreUtil.save("backgroundImage", tfile.nativePath);
+						tfile.removeEventListener(Event.SELECT, tselectHandler);
+						backgroundImage.source = tfile.nativePath;
+					});	
+				tfile.browseForOpen("选择背景图片");
+			}
+			
+			private function swapAnmLayerHandler(event:MouseEvent):void
+			{
+				if(!cbRefTexture.selectedItem || !cbRefTexture.selectedItem.data)
+				{
+					return;
+				}
+				var ipt:AnimationImporter = cbRefTexture.selectedItem.data;
+				var con:Sprite = anmBlender.getWrapper(ipt).container;
+				
+				var target:Button = event.target as Button;
+				var _curClickBtnId:String = target.id;
+				var ind:int = canAnimationLayers.getChildIndex(con.parent); 
+				if( _curClickBtnId == "downMoveBtn" ){//下移动
+					if( ind == 0 )
+						return;
+					else
+						canAnimationLayers.swapElementsAt(ind-1,ind);
+				}else{//上移动
+					if( (ind+1) == canAnimationLayers.numChildren )
+						return;
+					else
+						canAnimationLayers.swapElementsAt(ind+1,ind);
+				}
+				//canAnimationLayers.swapChildrenAt(0, 1);
+			}
+			
+			//////目录预览窗口
+			private var previewWindow:PreviewWindow;
+			private function popUpPreviewWindowHandler(event:MouseEvent):void
+			{
+				if(previewWindow == null)
+				{
+					previewWindow = new PreviewWindow();
+					previewWindow.addEventListener(Event.CLOSE, closeSubWindowHandler);
+					previewWindow.addEventListener(PreviewJtaEvent.OPEN, openPreviewJtaFileHandler);
+					previewWindow.open(true);
+				}
+				else{
+					previewWindow.activate();
+				}
+			}
+			private function openPreviewJtaFileHandler(event:PreviewJtaEvent):void
+			{
+				activate();
+				var tarr:Array = event.file.name.split(".");
+				var text:String = tarr.length > 1 ? tarr.pop() : "";
+				if(text == "jta"){
+					anmImporter.loadAnmBy(event.file);
+				}
+				else{
+					anmImporter.loadTextureBy(event.file);
+				}
+			}
+			
+			private function closeSubWindowHandler(event:Event):void
+			{
+				(event.target as Window).removeEventListener(Event.CLOSE, closeSubWindowHandler);
+				if(event.target == previewWindow){
+					previewWindow.removeEventListener(PreviewJtaEvent.OPEN, openPreviewJtaFileHandler);
+					previewWindow = null;
+				}
+			}
+			
+			/** 坐标文本框改变事件 */
+			protected function txt_changeHandler(event:Event):void
+			{
+				canFirePointRect.x = canAxis.width * 0.5 + Number(txtFirePointX.text);
+				canFirePointRect.y = canAxis.height * 0.5 + Number(txtFirePointY.text);
+				//canWingPointRect.x = canAxis.width * 0.5 + Number(txtWingPointX.text);
+				//canWingPointRect.y = canAxis.height * 0.5 + Number(txtWingPointY.text);
+				ttEffectRect.x = canAxis.width * 0.5 + Number(txtTTEffectPointX.text);
+				ttEffectRect.y = canAxis.height * 0.5 + Number(txtTTEffectPointY.text);
+			}
+			
+			/** 文本框按键事件 */
+			protected function txt_keyDownHandler(event:KeyboardEvent):void
+			{
+				var ti:TextInput = event.currentTarget as TextInput;
+				if(event.keyCode == Keyboard.UP){
+					ti.text = (Number(ti.text) + 1).toString();
+					ti.selectionBeginIndex = int.MAX_VALUE;
+					txt_changeHandler(null);
+				}
+				else if(event.keyCode == Keyboard.DOWN){
+					ti.text = (Number(ti.text) - 1).toString();
+					ti.selectionBeginIndex = int.MAX_VALUE;
+					txt_changeHandler(null);
+				}
+			}
+			
+			private function onChangeTTEffectStartFrame():void
+			{
+				changeFrame(0);
+			}
+			
+			private function changeSynmmetry():void
+			{
+				if( currDir == null )
+					return;
+				var frame:AnimationFrame;
+				for each(frame in currDir.frames){
+					frame.synmmetry = int(cboSymmetry.selectedItem.data); 
+				}
+				currAct.props.symmetry = int(cboSymmetry.selectedItem.data);
+				onAnimationFrameMoved();
+			}
+			
+			private function changePlay():void
+			{
+				currAct.props.playeType = int(cboPlay.selectedItem.data);
+				//currAct.props.isTTEffect = int(cboIsTTEffect.selectedItem.data);
+			}
+		]]>
+	</fx:Script>
+	<fx:Declarations>
+		<!-- 将非可视元素（例如服务、值对象）放在此处 -->
+	</fx:Declarations>
+	<fx:Style source="style.css"/>
+	
+	<s:VGroup x="10" y="10" gap="0">
+		<s:HGroup>
+			<mx:Label text="动作:"/>
+			<mx:ComboBox id="cboType" dataProvider="{actList}" width="105" enabled="{actList.length > 0}" close="changeAnimationActHandler(event)"/>
+		</s:HGroup>
+		<s:HGroup>
+			<mx:Label text="方向:"/>
+			<mx:ComboBox id="cboDirection" dataProvider="{dirList}" width="105" enabled="{cboType.selectedItem!=null}" close="changeAnimationDirHandler(event)"/>
+		</s:HGroup>
+	</s:VGroup>
+	
+	<s:HGroup x="10" y="60" gap="0">
+		<mx:Label text="对称方式"/>
+		<mx:ComboBox id="cboSymmetry" dataProvider="{synmmetryList}" width="50" enabled="{actList.length > 0}"  close="changeSynmmetry()"/>
+	</s:HGroup>
+	<!--
+	<s:HGroup x="10" y="80" gap="0">
+		<mx:Label text="动作效果"/>
+		<mx:ComboBox id="cboIsTTEffect" dataProvider="{playList2}" width="50" enabled="{actList.length > 0}"  close="changePlay()"/>
+	</s:HGroup>-->
+	
+	<s:HGroup x="10" y="100" gap="0">
+		<mx:Label text="播放方式"/>
+		<mx:ComboBox id="cboPlay" dataProvider="{playList}" width="80" enabled="{actList.length > 0}"  close="changePlay()"/>
+	</s:HGroup>
+	
+	<s:VGroup x="160" y="10">
+		<s:HGroup>
+			<!--<mx:Label text="速度:"/>
+			<mx:TextInput width="50" id="txtPlaySpeed" restrict="0-9" text="200" enabled="true"/>
+			<mx:Label text="重复:"/>
+			<mx:TextInput width="50" id="txtRepeatCount" restrict="0-9" text="3" enabled="true"/>-->
+			
+			<mx:Button label="保存动作属性" enabled="{currAct != null}" click="saveActProps();" toolTip="保存用户自定义的所用动作属性，包括速度、重复和包围框"/>
+			<mx:Button label="删除动作" enabled="{currAct != null}" click="delAct();" toolTip="删除选定的动作"/>
+		</s:HGroup>
+		
+		<s:HGroup>
+			<mx:Label text="宽度:"/>
+			<mx:TextInput id="txtCanARWidth" width="50" text="{canAnimationRect_width}" restrict="0-9"/>
+			<mx:Label text="高度:"/>
+			<mx:TextInput id="txtCanARHeight" width="50" text="{canAnimationRect_height}"  restrict="0-9"/>
+			
+			<mx:Button label="计算动作包围框" enabled="{currAct != null}" click="{autoCalcActRect(currAct)}" toolTip="根据所有方向包围框的大小，自动计算动作包围框"/>
+		</s:HGroup>
+		
+		<s:HGroup>
+			<mx:Label text="宽度:"/>
+			<mx:TextInput id="txtCanDORWidth" width="50" text="{canDirObjRect_width}" restrict="0-9"/>
+			<mx:Label text="高度:"/>
+			<mx:TextInput id="txtCanDORHeight" width="50" text="{canDirObjRect_height}" restrict="0-9"/>
+			
+			<mx:Button click="saveDirProps();" label="保存方向属性" enabled="{currDir != null}" toolTip="保存用户自定义的所用方向属性，包括攻击点和包围框等"/>
+			<mx:Button label="删除方向" click="delDir()" enabled="{currDir != null}" toolTip="删除选定的方向"/>
+			<mx:CheckBox id="ckbDelAll" toolTip="删除所有动作的同一方向" selected="true" enabled="{currDir != null}"/>
+		</s:HGroup>
+		
+		<s:HGroup>
+			<mx:Label text="宽度:"/>
+			<mx:TextInput id="txtFirePointWidth" width="50" text="{canFirePointRect_width}" restrict="0-9"/>
+			<mx:Label text="高度:"/>
+			<mx:TextInput id="txtFirePointHeight" width="50" text="{canFirePointRect_height}" restrict="0-9"/>
+			
+			<mx:Button label="计算方向包围框" enabled="{currDir != null}" click="{autoCalcDirRect(currDir)}" toolTip="根据所有帧的大小，自动计算计算方向包围框"/>
+		</s:HGroup>
+	</s:VGroup>
+	
+	
+	<s:VGroup x="465" y="133">
+		<mx:Label text="动作包围框坐标:"/>
+		<s:HGroup>
+			<mx:TextInput id="txtAnimationX" width="40" text="{canAnimationRect.x-canAxis.width*0.5}" editable="false"/>
+			<mx:TextInput id="txtAnimationY" width="40" text="{canAnimationRect.y-canAxis.height*0.5}" editable="false"/>
+		</s:HGroup>
+		
+		<mx:Label text="方向包围框坐标:"/>
+		<s:HGroup>
+			<mx:TextInput id="txtDirObjX" width="40" text="{canDirObjRect.x-canAxis.width*0.5}" editable="false"/>
+			<mx:TextInput id="txtDirObjY" width="40" text="{canDirObjRect.y-canAxis.height*0.5}" editable="false"/>
+		</s:HGroup>
+		
+		<mx:Label text="伤害点坐标:" visible="false"/>
+		<s:HGroup>
+			<mx:TextInput id="txtFirePointX" visible="false" width="40" text="{canFirePointRect.x-canAxis.width*0.5}" editable="{fireboxVisible.selected}" maxChars="4" restrict="0-9\-" change="txt_changeHandler(event)" keyDown="txt_keyDownHandler(event)"/>
+			<mx:TextInput id="txtFirePointY" visible="false" width="40" text="{canFirePointRect.y-canAxis.height*0.5}" editable="{fireboxVisible.selected}" maxChars="4" restrict="0-9\-" change="txt_changeHandler(event)" keyDown="txt_keyDownHandler(event)"/>
+		</s:HGroup>
+		
+		<mx:Label text="伤害缩放" visible="false"/>
+		<s:HGroup>
+			<mx:TextInput id="txtHurtScaleX" width="40" visible="false" text="1" editable="{fireboxVisible.selected}" maxChars="4" restrict="0-9\-" toolTip="x轴缩放"/>
+			<mx:TextInput id="txtHurtScaleY" width="40" visible="false" text="1" editable="{fireboxVisible.selected}" maxChars="4" restrict="0-9\-" toolTip="y轴缩放"/>
+		</s:HGroup>
+		
+		<!--
+		<mx:Label text="翅膀点坐标:"/>
+		<s:HGroup >
+			<mx:TextInput id="txtWingPointX" width="40" text="{canWingPointRect.x-canAxis.width*0.5}" editable="{wingboxVisible.selected}" maxChars="4" restrict="0-9\-" change="txt_changeHandler(event)" keyDown="txt_keyDownHandler(event)"/>
+			<mx:TextInput id="txtWingPointY" width="40" text="{canWingPointRect.y-canAxis.height*0.5}" editable="{wingboxVisible.selected}" maxChars="4" restrict="0-9\-" change="txt_changeHandler(event)" keyDown="txt_keyDownHandler(event)"/>
+		</s:HGroup>-->
+		<mx:Label text="动作效果坐标:"/>
+		<s:HGroup>
+			<mx:TextInput id="txtTTEffectPointX" width="40" text="{ttEffectRect.x-canAxis.width*0.5}" editable="{ttEffectVisible.selected}" maxChars="4" restrict="0-9\-" change="txt_changeHandler(event)" keyDown="txt_keyDownHandler(event)"/>
+			<mx:TextInput id="txtTTEffectPointY" width="40" text="{ttEffectRect.y-canAxis.height*0.5}" editable="{ttEffectVisible.selected}" maxChars="4" restrict="0-9\-" change="txt_changeHandler(event)" keyDown="txt_keyDownHandler(event)"/>
+		</s:HGroup>
+		
+		<mx:Label text="图片坐标:"/>
+		<s:HGroup>
+			<mx:TextInput id="txtImageX" x="464" y="371" width="40" text="{img.x-canAxis.width*0.5}" editable="true" change="onChangeTxtImagePos(event)"/>
+			<mx:TextInput id="txtImageY" x="511" y="371" width="40" text="{img.y-canAxis.height*0.5}" editable="true" change="onChangeTxtImagePos(event)"/>
+		</s:HGroup>
+		
+		<mx:Label text="帧配置"/>
+		<mx:Label text="(顿帧-吟唱-攻击-开始-结束-次数)"/>
+		<s:HGroup>
+			<mx:TextInput id="txtBaseDunTime" x="464" width="20" text="0" toolTip="顿帧基础时间"/>			
+			<mx:TextInput id="txtYinchangFrame" x="495" width="20" text="0" toolTip="吟唱的结束帧"/>
+			<mx:TextInput id="txtAttackFrame" x="526" width="20" text="0" toolTip="攻击的结束帧"/>
+			<mx:TextInput id="txtLoopStart" x="554" width="20" text="0" toolTip="攻击循环开始帧"/>			
+			<mx:TextInput id="txtLoopEnd" x="584" width="20" text="0" toolTip="攻击循环结束帧"/>
+			<mx:TextInput id="txtLoops" x="614" width="20" text="0" toolTip="循环次数"/>
+		</s:HGroup>
+		
+		<mx:Label text="帧列表:"/>
+		<s:HGroup>
+			<mx:DataGrid id="dunGrid" width="180" height="140" editable="true" itemClick="{gridClick(event)}">
+				<mx:columns>       
+					<mx:DataGridColumn headerText="序号" dataField="frame" editable="false"/>     
+					<mx:DataGridColumn headerText="正常速度" dataField="normal"/>
+					<!--
+					<mx:DataGridColumn headerText="顿帧吗" dataField="showDelay" editorDataField="selected">
+						<mx:itemEditor>
+							<fx:Component>
+								<mx:CheckBox/>
+							</fx:Component>
+						</mx:itemEditor>
+						<mx:itemRenderer>
+							<fx:Component>
+								<mx:CheckBox/>
+							</fx:Component>
+						</mx:itemRenderer>
+					</mx:DataGridColumn>
+					-->
+					<!--
+					<mx:DataGridColumn headerText="伤害角度" dataField="angle"/>-->
+				</mx:columns>
+			</mx:DataGrid>
+		</s:HGroup>
+		
+		<mx:Button label="保存以上属性"  visible="false" click="{saveChange()}" enabled="{anmImporter.textureFile != null &amp;&amp; currDir != null}" toolTip="保存动作包围框、方向包围框、伤害点坐标、图片坐标属性"/>
+	</s:VGroup>
+	
+	<mx:Canvas id="canContains" x="10" y="133" width="450" height="450" borderStyle="solid" borderColor="#0F0F0F" backgroundAlpha="0.5" backgroundColor="#EEe202" horizontalScrollPolicy="off" verticalScrollPolicy="off">
+		<mx:Canvas id="canImageContains" borderStyle="solid" width="450" height="450" horizontalScrollPolicy="off" verticalScrollPolicy="off">		
+			<mx:VRule height="100%" x="225" mouseChildren="false" mouseEnabled="false"/>
+			<mx:HRule width="100%" y="225" mouseChildren="false" mouseEnabled="false"/>
+			<mx:Canvas width="450" height="450" id="canAxis" mouseChildren="false" mouseEnabled="false"/>
+			
+			<MyComponents:ComDragCanvas 
+				id="canAnimationRect" 
+				x="0" y="0"  
+				width="{canAnimationRect_width}" 
+				height="{canAnimationRect_height}" 
+				backgroundAlpha="0.5"  
+				backgroundColor="#FF0202" 
+				toolTip="动作包围框" 
+				visible="{boundingboxVisible.selected}"
+				/>
+			
+			<MyComponents:ComDragCanvas 
+				id="canDirObjRect" 
+				x="0" y="0" 
+				width="{canDirObjRect_width}" 
+				height="{canDirObjRect_height}"
+				backgroundAlpha="0.5"  
+				backgroundColor="#00F202" 
+				toolTip="方向包围框" 
+				visible="{boundingboxVisible.selected}"
+				/>
+			
+			<mx:Canvas clipContent="false">
+				<mx:Image id="refImg" mouseEnabled="false" mouseChildren="false" visible="{referenceLayerVisible.selected}"/>
+				<mx:Image id="img" mouseDown="onAnimationFrameMouseDown(event)"  mouseUp="onAnimationFrameMouseUp(event)" move="onAnimationFrameMoved()"/>
+				<mx:Image id="synmmetryImg" mouseEnabled="false" mouseChildren="false"/>
+				<mx:Image id="ttEffectImg" mouseEnabled="false" mouseChildren="false"/>
+			</mx:Canvas>
+			
+			<MyComponents:ComDragCanvas 
+				id="canFirePointRect" 
+				x="0" y="0" 
+				width="{canFirePointRect_width}" 
+				height="{canFirePointRect_height}"
+				backgroundAlpha="1" 
+				backgroundColor="#F0FF00" 
+				toolTip="伤害点" 
+				move="firePointMoveHandler(event)" 
+				visible="{fireboxVisible.selected}"
+				/>
+			
+			<MyComponents:ComDragCanvas 
+				id="canWingPointRect" 
+				x="0" y="0" 
+				width="{canFirePointRect_width}" 
+				height="{canFirePointRect_height}"
+				backgroundAlpha="1" 
+				backgroundColor="#F000FF" 
+				toolTip="翅膀安装点" 
+				move="wingPointMoveHandler(event)" 
+				visible="{wingboxVisible.selected}"
+				/>
+			
+			<MyComponents:ComDragCanvas 
+				id="ttEffectRect" 
+				x="0" y="0" 
+				width="{canFirePointRect_width}" 
+				height="{canFirePointRect_height}"
+				backgroundAlpha="1" 
+				backgroundColor="#FFFFFF" 
+				toolTip="动作效果点" 
+				move="ttEffectPointMoveHandler(event)" 
+				visible="{ttEffectVisible.selected}"
+				/>
+			
+			<s:VGroup x="345" y="13">
+				<s:HGroup>
+					<mx:Label text="显示参考层"/>
+					<mx:CheckBox id="referenceLayerVisible" selected="true"/>
+				</s:HGroup>
+				<s:HGroup>
+					<mx:Label text="显示包围框"/>
+					<mx:CheckBox id="boundingboxVisible" selected="true"/>
+				</s:HGroup>
+				<s:HGroup>
+					<mx:Label text="显示伤害点" visible="false"/>
+					<mx:CheckBox id="fireboxVisible" selected="false" visible="false"/>
+				</s:HGroup>
+				<s:HGroup>
+					<mx:Label text="翅膀安装点"/>
+					<mx:CheckBox id="wingboxVisible" selected="false"/>
+				</s:HGroup>
+				<s:HGroup>
+					<mx:Label text="动作效果点"/>
+					<mx:CheckBox id="ttEffectVisible" selected="false"/>
+				</s:HGroup>
+			</s:VGroup>
+			
+			<mx:VBox x="390" y="350" verticalGap="0">
+				<mx:RadioButton id="moveAllAnimations" label="方式1" groupName="wayToMove" selected="true" toolTip="移动所有动作所有方向所有帧"/>
+				<mx:RadioButton id="moveOneAnimationSet" label="方式2" groupName="wayToMove" toolTip="移动单个动作所有方向所有帧"/>
+				<mx:RadioButton id="moveOneAnimationObject" label="方式3" groupName="wayToMove" toolTip="移动单个方向所有帧"/>
+				<mx:RadioButton id="moveAllAnimationsByDir" label="方式4" groupName="wayToMove" toolTip="移动同一方向的所有动作所有帧"/>
+				<mx:RadioButton id="moveOneFrame" label="方式5" groupName="wayToMove" toolTip="移动一帧"/>
+				<mx:RadioButtonGroup id="wayToMove"/>
+			</mx:VBox>
+		</mx:Canvas>
+		
+		<s:VGroup x="17" y="330">
+			<mx:HSlider id="frameSlide" minimum="0" tickInterval="1" snapInterval="1" enabled="{currDir != null}" change="frameSelectHandler(event)" toolTip="选择帧"/>
+			<mx:HSlider id="refImageAlphaSlide" minimum="0" maximum="1" value="1" change="{refImg.alpha = refImageAlphaSlide.value}" toolTip="选择参考层透明度"/>
+			<mx:HSlider id="imageAlphaSlide" minimum="0" maximum="1" value="1" change="{img.alpha = imageAlphaSlide.value}" toolTip="选择编辑层透明度"/>
+			<mx:HSlider id="boundingboxTransparent" maximum="1" toolTip="包围盒透明度" change="{canAnimationRect.alpha = canDirObjRect.alpha = boundingboxTransparent.value}" value="0.5"/>
+		</s:VGroup>
+	</mx:Canvas>
+	
+	<mx:Canvas x="650" y="65" id="canCharacterActions" width="582" height="516" backgroundColor="#000000">
+		<mx:Image id="backgroundImage"/>
+		<mx:Canvas id="canAnimationLayers" x="{AnimationObjectPosX}" y="{AnimationObjectPosY}">
+			<!--
+			<mx:Canvas id="canAnimationLayer2"/>
+			<mx:Canvas id="canAnimationLayer3"/>
+			<mx:Canvas id="canAnimationLayer1"/>-->
+		</mx:Canvas>
+		<mx:VBox>			
+			<mx:HBox x="230" y="5">
+				<mx:Label text="动画"/>
+				<mx:ComboBox width="180" id="cbRefTexture" dataProvider="{refTextureArrayCollection}" /><!--close="{if(cbRefTexture.selectedItem){refreshRefAnimationSet(cbRefTexture.selectedItem.data)}}"/>-->
+				<!--
+				<mx:Label text="动作"/>
+				<mx:ComboBox width="100" id="cbRefAct" dataProvider="{refActArrayCollection}" close="{if(cbRefAct.selectedItem){refreshRefAnimationObject(cbRefAct.selectedItem.data)}}"/>
+				<mx:Label text="方向"/>
+				<mx:ComboBox width="100" id="cbRefDir" dataProvider="{refDirArrayCollection}" close="changeRefAnimationFrameHandler(event)"/>-->
+			</mx:HBox>
+			<mx:HBox horizontalGap="3">
+				<mx:Button label="导入参考动画" click="{anmBlender.load()}"/>
+				<mx:Button label="删除所选参考动画" click="{onRemoveSelectedRefJtaHandler(event)}" enabled="{refTextureArrayCollection.length>0}"/>
+				<mx:Button label="清除所有参考动画" click="{anmBlender.removeAll();refActArrayCollection.removeAll();refDirArrayCollection.removeAll()}" enabled="{refTextureArrayCollection.length>0}"/>
+				<!--
+				<mx:Button label="同步所有参考动画" click="{onSynAllRefAnimationHandler(event)}" enabled="{refTextureArrayCollection.length>0}"/>-->
+				<mx:Button id="upMoveBtn" label="上移一层" click="swapAnmLayerHandler(event)"/>
+				<mx:Button id="downMoveBtn" label="下移一层" click="swapAnmLayerHandler(event)"/>
+			</mx:HBox>
+			<mx:HBox>
+				<mx:Button id="btnPlay" label="开始播放" width="104" click="playAnimationHandler(event)" height="22"/>
+				<mx:Button label="刷新" width="104" click="{refreshAnimationHandler(event)}" height="22"/>
+				<mx:Label text="显示顿帧效果" visible="false"/>
+				<mx:CheckBox id="chkShowDun" toolTip="是否显示顿帧效果" visible="false"/>
+			</mx:HBox>
+		</mx:VBox>
+	</mx:Canvas>
+	
+	<!-- 导入 -->
+	<mx:HBox x="650" y="10">
+		<!--
+		<mx:Button label="导入动画" toolTip="导入JTA格式动画文件" click="{anmImporter.loadAnm()}"/>-->
+		<mx:Button label="导入纹理" toolTip="导入TT格式动画文件" click="{anmImporter.loadTexture()}"/>
+		<mx:Button label="导入图片" toolTip="导入PNG图片文件夹" click="{anmImporter.loadImg()}"/>
+		<mx:Button label="导入SWF" toolTip="导入SWF格式动画文件" click="{anmImporter.loadSwf()}"/>
+		
+		<!-- <mx:Button label="导出动画" enabled="{actList.length > 0}" toolTip="导出二进制格式动画文件" click="exportAnimation()"/> -->
+		<mx:Label text="质量:"/>
+		<mx:TextInput text="80" id="swfQualityTxt" toolTip="TT格式压缩率，有效值0~100" width="30" maxChars="3" restrict="0-9" editable="{actList.length > 0}" />
+		<mx:CheckBox selected="true" id="exportSwf2" enabled="{actList.length > 0}" toolTip="TT文件的内部格式为swf2"/>
+		<mx:Button label="导出纹理" enabled="{actList.length > 0}" toolTip="导出TT格式动画文件" click="exportTexture()"/>
+		<mx:Button label="导出图片" enabled="{actList.length > 0}" toolTip="导出图片序列（原始生成文件夹）" click="exportImage()"/>
+		<!-- <mx:Button label="导出SWF" enabled="{anmImporter.swfBytes != null}" toolTip="导出SWF压缩格式的纹理动画" click="exportSwf()"/> -->
+	</mx:HBox>
+	
+	<mx:HBox x="650" y="38">
+		<mx:Label text="关键色:"/>
+		<mx:TextInput id="keyColorInput" width="90" text="0x00000000" editable="{actList.length > 0}"/>
+		<mx:Button label="一键设置所有帧" enabled="{actList.length > 0}" click="autoProcessImagesHandler(event)" toolTip="设定关键色后按此按钮可以帮你自动处理所有刚刚导入的图片,推荐在导入图片之后立即使用"/>
+		<mx:Button label="目录预览" toolTip="可视化目录预览" click="popUpPreviewWindowHandler(event)"/>
+		
+		<mx:Button label="编译非压缩纹理" toolTip="把非压缩纹理格式动画文件夹输出成纹理格式（tt扩展名文件）" click="{compilerTexture()}"/>
+		<mx:Button label="导出非压缩纹理" enabled="{actList.length > 0}" toolTip="导出纹理格式动画文件为非压缩文件夹" click="exportTexture(false)"/>
+	</mx:HBox>
+	
+	<mx:HBox x="10" y="591">
+		<mx:Button label="帧工具" click="openFrameSelectWindowHandler(event)" enabled="{currDir != null}"/>
+		<mx:Button label="背景选择" click="openBgSelectWindowHandler(event)"/>
+		<mx:Button label="加载动画配置" click="loadAnmConfigHandler(event)"/>
+		<mx:Label id="anmConfigSrc" text="配置未加载"/>
+		<mx:Button label="应用动画配置" click="applyAnmConfigHandler(event)"/>
+	</mx:HBox>
+	
+	<mx:HBox x="10" y="631">
+		<mx:Label text="动作效果播放开始帧:"/>
+		<mx:TextInput id="txtTTEffectStartFrame" width="50" text="@{ttEffectStartFrame}" restrict="0-9" change="{changeFrame(0)}"/>
+	</mx:HBox>
+	
+	<mx:HBox x="650" y="591">
+		<mx:Button label="选择背景图片" click="selectBgImageHandler(event)"/>
+		<mx:Button label="检查更新" click="checkUpdate(event)"/>
+	</mx:HBox>
+	
+	<mx:HBox x="650" y="621">
+		<mx:TextInput text="配置读取根路径" id="txtConfRootPath" editable="false"/>
+		<mx:Button label="设置配置根路径" click="setupConfigRootPath()"/>
+		<mx:Button label="导出所有动画配置" click="exportTTConf()"/>
+	</mx:HBox>
+</s:WindowedApplication>

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<Config>
+	<DirMappings>
+		<DirMapping trait="_S_" name="南"/>
+		<DirMapping trait="_W_" name="西"/>
+		<DirMapping trait="_N_" name="北"/>
+		<DirMapping trait="_ES_" name="东南"/>
+		<DirMapping trait="_WS_" name="西南"/>
+		<DirMapping trait="_EN_" name="东北"/>
+		<DirMapping trait="_WN_" name="西北"/>
+		<DirMapping trait="_E_" name="东"/>
+	</DirMappings>
+	<ActionMappings>
+		<!--
+		<ActionMapping name="攻击" speed="1"/>
+		<ActionMapping name="死亡" speed="1"/>
+		<ActionMapping name="受伤" speed="1"/>
+		-->
+		<ActionMapping name="站立" speed="1">
+			<S>1,400000</S>
+		</ActionMapping>
+		<!-- 
+		<ActionMapping name="走动" speed="1">
+			<E>1,1</E>
+			<S>3,3</S>
+			<N>5,5</N>
+			<ES>7,7</ES>
+			<EN>9,9</EN>
+		</ActionMapping>
+		-->
+		<!--
+		<ActionMapping name="坐骑" speed="1"/>
+		-->
+	</ActionMappings>
+</Config>

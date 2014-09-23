@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Window 
+	xmlns:mx="http://www.adobe.com/2006/mxml" 
+	layout="absolute" 
+	width="580" 
+	height="500" 
+	title="背景选择窗口" 
+	backgroundColor="0x333333"
+	showStatusBar="false"
+	creationComplete="start()">
+	
+	<mx:Script>
+		<![CDATA[
+			import com.st.framework.utils.LocalStoreUtil;
+			
+			import events.FrameSelectEvent;
+			import events.ImporterEvent;
+			
+			import texture.AnimationAct;
+			import texture.AnimationDir;
+			import texture.AnimationFrame;
+			import texture.AnimationImporter;
+			
+			import mx.collections.ArrayCollection;
+			import mx.events.ListEvent;
+			
+			private static const ANM_FOLDER:String = "BG_AMN_FOLDER";
+			private static const ANM_FILTERS:Array = [new FileFilter("动画文件", "*.jta"), new FileFilter("纹理文件", "*.tt")];
+			
+			private var anmImporter:AnimationImporter;
+			private var currDir:AnimationDir;
+			
+			[Bindable]
+			private var actionList:ArrayCollection = new ArrayCollection();
+			
+			[Bindable]
+			private var dirList:ArrayCollection = new ArrayCollection();
+			
+			protected function start():void
+			{
+				anmImporter = new AnimationImporter();
+				anmImporter.addEventListener(ImporterEvent.ImportComplete, importCompleteHandler);
+			}
+			
+			protected function importCompleteHandler(event:ImporterEvent):void
+			{
+				actionList.removeAll();
+				actionList.addItem({label:"请选择动作"});
+				for each(var tact:AnimationAct in anmImporter.actList)
+				{
+					actionList.addItem({label:tact.props.typeName, data: tact});
+				}
+			}
+			
+			protected function loadAnm(event:MouseEvent):void
+			{
+				var tfile:File = new File(LocalStoreUtil.read(ANM_FOLDER));
+				tfile.browseForOpen("选择动画文件", ANM_FILTERS);
+				tfile.addEventListener(Event.SELECT, 
+					function tanmSelectHandler(e:Event):void
+					{
+						LocalStoreUtil.save(ANM_FOLDER, tfile.parent.nativePath);
+						tfile.removeEventListener(Event.SELECT, tanmSelectHandler);
+						
+						var tarr:Array = tfile.name.split(".");
+						var text:String = tarr.length > 1 ? tarr.pop() : "";
+						if(text.toLowerCase() == "jta"){
+							anmImporter.loadAnmBy(tfile);
+						}
+						else{
+							anmImporter.loadTextureBy(tfile);
+						}
+					}
+				);
+			}
+			
+			protected function actionSelectHandler(event:ListEvent):void
+			{
+				if(!cbAct.selectedItem || !cbAct.selectedItem.data)
+				{
+					return;
+				}
+				
+				dirList.removeAll();
+				var tact:AnimationAct = AnimationAct(cbAct.selectedItem.data);
+				for each(var tdir:AnimationDir in tact.props.dirList)
+				{
+					dirList.addItem({label: tdir.props.dirName, data: tdir});
+				}
+				frameSelect.maximum = tact.props.frameCount-1;
+				currDir = dirList[0].data as AnimationDir;
+				frameSelect.value = 0;
+				changeFrame(dirList[0].data as AnimationDir, 0);								
+			}
+			
+			protected function dirSelectHandler(event:ListEvent):void
+			{
+				if(!cbDir.selectedItem)
+				{
+					return;
+				}
+				var tdir:AnimationDir = cbDir.selectedItem.data as AnimationDir;
+				currDir = tdir;
+				frameSelect.value = 0;
+				changeFrame(tdir, 0);
+			}
+			
+			protected function changeFrame(dir:AnimationDir, index:int):void
+			{
+				while(frameContiner.numChildren)
+				{
+					frameContiner.removeChildAt(0);
+				}
+				if(dir)
+				{
+					var taf:AnimationFrame = dir.frames[index];
+					taf.x = taf.props.rect.x;
+					taf.y = taf.props.rect.y;
+					frameContiner.addChild(taf);
+				}
+			}
+						
+			protected function frameSelectHandler(event:Event):void
+			{
+				if(currDir)
+				{
+					changeFrame(currDir, frameSelect.value);
+				}
+			}
+			
+			protected function usingFrameHandler(event:MouseEvent):void
+			{
+				var taf:AnimationFrame = frameContiner.getChildAt(0) as AnimationFrame;
+				var tevt:FrameSelectEvent = new FrameSelectEvent(FrameSelectEvent.FRAME_SELECTED);
+				tevt.animationFrame = taf.duplicate() as AnimationFrame;
+				dispatchEvent(tevt);
+			}
+			
+			protected function frameAlphaChangeHandler(event:Event):void
+			{
+				var tevt:FrameSelectEvent = new FrameSelectEvent(FrameSelectEvent.FRAME_ALPHA_CHANGED);
+				tevt.alphaValue = alphaSelect.value;
+				frameContiner.alpha = alphaSelect.value;
+				dispatchEvent(tevt);
+			}
+		]]>
+	</mx:Script>
+	
+	<mx:UIComponent id="frameContiner" x="{width * 0.5}" y="{20 + height * 0.5}"/>
+	<mx:VBox>
+		<mx:HBox>
+			<mx:Label text="动作:"/>
+			<mx:ComboBox id="cbAct" dataProvider="{actionList}" enabled="{actionList.length > 0}" change="actionSelectHandler(event)"/>
+			<mx:Label text="方向:"/>
+			<mx:ComboBox id="cbDir" dataProvider="{dirList}" enabled="{cbAct.selectedIndex > 0}" change="dirSelectHandler(event)"/>
+			<mx:Button label="载入动画" click="loadAnm(event)"/>
+			<mx:Button label="选择当前帧" enabled="{cbDir.enabled}" click="usingFrameHandler(event)"/>
+		</mx:HBox>
+	</mx:VBox>
+	<mx:VBox bottom="30" left="30">
+		<mx:HSlider id="frameSelect" toolTip="选择帧" tickInterval="1" snapInterval="1" change="frameSelectHandler(event)"/>
+		<mx:HSlider id="alphaSelect" toolTip="选择透明度" value="1" maximum="1" change="frameAlphaChangeHandler(event)"/>
+	</mx:VBox>
+</mx:Window>

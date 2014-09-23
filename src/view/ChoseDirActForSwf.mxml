@@ -1,0 +1,231 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:TitleWindow 
+		   xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		   xmlns:s="library://ns.adobe.com/flex/spark" 
+		   xmlns:mx="library://ns.adobe.com/flex/mx"
+		   title="swf导入设置"
+		   width="300" height="300"
+		   backgroundColor="0x333333"
+		   initialize="init()"
+		   
+		   >
+	<fx:Declarations>
+		<!-- 将非可视元素（例如服务、值对象）放在此处 -->
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import config.ConfigData;
+			
+			import events.ParamEvent;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.controls.TextInput;
+			import mx.events.DropdownEvent;
+			import mx.managers.PopUpManager;
+			
+			private var actInd:int;
+			private var conList:Vector.<HBox>;
+			private var actCompDic:Dictionary;
+			/**已选择的动作列表**/
+			private var selectActList:Vector.<int>;
+			private function init():void
+			{
+				conList = new Vector.<HBox>();
+				reset();
+				addEventListener(MouseEvent.CLICK,onClick,true);
+				addEventListener(DropdownEvent.CLOSE,onChangeHandler,true);
+			}
+			
+			private function reset():void
+			{
+				actCompDic = new Dictionary();
+				selectActList = new Vector.<int>();
+				conList.splice(0,conList.length);
+				cboDir.dataProvider = ConfigData.DIR_LIST;
+				cboDir.selectedIndex = 0;
+				actInd = 0;
+				actCompList.removeAllChildren();
+			}
+			
+			private function btnComfirmHandler():void
+			{
+				var actInfo:Object = {dir:cboDir.selectedItem.data};
+				var frameList:Vector.<int> = new Vector.<int>();
+				for( var i:int=0,len:int=selectActList.length;i<len;i++ ){
+					var act:int = selectActList[i];
+					if( act!=-1 ){
+						var ind:int = selectActList.indexOf(act);
+						var preInd:int = selectActList.indexOf(act,0);
+						if( preInd == ind )
+							preInd = -1;
+						var nextInd:int = selectActList.indexOf(act,ind+1);
+						if( nextInd > -1 || preInd > -1 ){
+							Alert.show("含有相同动作，无法导出","提示");
+							return;
+						}
+						actInfo[act] = {start:1,end:1};
+						var vbox:HBox = actCompDic[i];
+						for(var j:int=0,numChild:int=vbox.numElements;j<numChild;j++){//获取当前动作的起始结束帧
+							var element:* = vbox.getElementAt(j);
+							if( element is TextInput ){
+								var txt:TextInput = TextInput(element);
+								var frame:int = 0;
+								//var fInd:int;
+								if( txt.id.indexOf("sFrame_") > -1 ){
+									frame = int(txt.text);
+									if( frame == 0 ){
+										Alert.show("帧数不合法，不能为0，无法导出","提示");
+										return;
+									}
+									
+									actInfo[act]["start"] = frame;
+								}else if( txt.id.indexOf("eFrame_") > -1 ){
+									frame = int(txt.text);
+									if( frame == 0 ){
+										Alert.show("帧数不合法，不能为0，无法导出","提示");
+										return;
+									}
+									
+									actInfo[act]["end"] = frame;
+								}
+								
+								frameList.push(frame);
+							}
+						}
+						
+						//检查帧是否合法
+						if( frameList[frameList.length-2] > frameList[frameList.length-1] ){
+							Alert.show("帧数不合法，动作的开始帧不能大于结束帧，无法导出","提示");
+							return;
+						}
+						
+					}
+				}
+				
+				/* frameList.sort(Array.NUMERIC);
+				for(i=0,len=frameList.length;i<len-2;i+=2){
+					
+				}
+				if( frameList.length>2 ){
+					if( frameList[frameList.length-2] <= frameList[frameList.length-3] ){
+						Alert.show("帧数不合法，动作间的帧数不能有重叠，无法导出","提示");
+						return;
+					}
+				} */
+				
+				reset();
+				dispatchEvent(new ParamEvent(Event.COMPLETE,actInfo));
+			}
+			
+			/**取消**/
+			private function btnCancelHandler():void
+			{
+				reset();
+				dispatchEvent(new ParamEvent(Event.CLOSE));
+			}
+			
+			/**更改动作**/
+			private function onChangeHandler(event:DropdownEvent):void
+			{
+				var target:* = event.target;
+				if( target is ComboBox && target.id != null ){
+					var combatBoxAct:ComboBox = target as ComboBox;
+					var ind:int = ComboBox(combatBoxAct).id.indexOf("_");
+					var _actInd:int = int(ComboBox(target).id.substr(ind+1));
+					selectActList[_actInd] = int(combatBoxAct.selectedItem.data); 
+				}
+			}
+			
+			private function onClick(event:MouseEvent):void
+			{
+				var target:Object = event.target;
+				if( target is Button ){
+					event.stopImmediatePropagation();
+					if( target == btnAdd )
+						btnAddHandler();
+					else if( target == btnConfirm )
+						btnComfirmHandler();
+					else if( target == btnCancel )
+						btnCancelHandler();
+					else if(Button(target).id != null && Button(target).id.indexOf("btnRemove_")>-1){
+						//删除动作
+						var ind:int = Button(target).id.indexOf("_");
+						var _actInd:int = int(Button(target).id.substr(ind+1));
+						selectActList[_actInd] = -1;
+						var vbox:HBox = actCompDic[_actInd];
+						if( vbox!=null ){
+							vbox.removeAllElements();
+							vbox.parent.removeChild(vbox);
+							delete actCompDic[_actInd];
+						}
+						
+					}
+				}
+			}
+			
+			/**添加动作**/
+			private function btnAddHandler():void
+			{
+				var vbox:HBox = new HBox();
+				vbox.id = "con_"+actInd;
+				actCompList.addElement(vbox);
+				actCompDic[actInd] = vbox;
+				
+				var actLabel:Label = new Label();
+				actLabel.text = "动作";
+				vbox.addElement(actLabel);
+				
+				var combatBoxAct:ComboBox = new ComboBox();
+				combatBoxAct.id = "cboAct_"+actInd;
+				combatBoxAct.width = 50;
+				combatBoxAct.dataProvider = ConfigData.ACT_LIST;
+				combatBoxAct.selectedIndex = 0;
+				
+				vbox.addElement(combatBoxAct);
+				
+				var framLabel:Label = new Label();
+				framLabel.text = "帧序列";
+				vbox.addElement(framLabel);
+				
+				var txtFrameStart:TextInput = new TextInput();
+				txtFrameStart.id = "sFrame_"+actInd;
+				txtFrameStart.text = "1";
+				txtFrameStart.toolTip = "开始帧";
+				txtFrameStart.width = 40;
+				txtFrameStart.restrict="0-9";
+				vbox.addElement(txtFrameStart);
+				
+				var txtFrameEnd:TextInput = new TextInput();
+				txtFrameEnd.id = "eFrame_"+actInd;
+				txtFrameEnd.text = "1";
+				txtFrameEnd.toolTip = "结束帧";
+				txtFrameEnd.width = 40;
+				txtFrameEnd.restrict="0-9";
+				vbox.addElement(txtFrameEnd);
+				
+				var delBtn:Button = new Button();
+				delBtn.label = "移除";
+				delBtn.id = "btnRemove_"+actInd;
+				vbox.addElement(delBtn);
+				actInd++;
+				
+				selectActList.push(int(combatBoxAct.selectedItem.data));
+			}
+		]]>
+	</fx:Script>
+	<mx:VBox>
+		<mx:HBox>
+			<mx:Label text="方向"/>
+			<mx:ComboBox id="cboDir" width="50" enabled="false"/>
+		</mx:HBox>
+		<mx:VBox id="actCompList">
+			
+		</mx:VBox>
+		<mx:HBox>
+			<mx:Button label="增加动作" id="btnAdd" />
+			<mx:Button label="确定" id="btnConfirm" />
+			<mx:Button label="取消" id="btnCancel" />	
+		</mx:HBox>
+	</mx:VBox>
+</mx:TitleWindow>

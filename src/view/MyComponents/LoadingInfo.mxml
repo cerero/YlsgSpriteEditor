@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:TitleWindow 
+	xmlns:mx="http://www.adobe.com/2006/mxml" 
+	layout="absolute" 
+	width="374" 
+	height="114" 
+	title="请稍候……"
+	backgroundColor="0x333333"
+	>
+	<mx:Script>
+		<![CDATA[
+			import mx.managers.PopUpManager;
+			private static var instance:LoadingInfo;
+			private var totalValue:Number;
+			public static function Show(displayObject:DisplayObject,maxValue:Number):LoadingInfo
+			{
+				if(instance == null)
+				{
+					instance = PopUpManager.createPopUp(displayObject,LoadingInfo,true) as LoadingInfo;
+				}
+				PopUpManager.centerPopUp(instance);
+				PopUpManager.bringToFront(instance);
+				instance.visible=true;
+				instance.totalValue=maxValue;
+				return instance;
+			}
+			
+			public function setValue(value:Number):void
+			{
+				progressBar.label=value+"/"+totalValue;
+			}
+			
+			public function Hide():void
+			{
+				PopUpManager.removePopUp(instance);
+				instance = null;
+			}
+		]]>
+	</mx:Script>
+	<mx:ProgressBar id="progressBar" horizontalCenter="0" verticalCenter="0" width="200" indeterminate="true" label="loading"/>
+</mx:TitleWindow>

@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Canvas xmlns:mx="http://www.adobe.com/2006/mxml" horizontalScrollPolicy="off" verticalScrollPolicy="off">
+	<mx:Script>
+		<![CDATA[
+			import com.st.framework.utils.FileUtil;
+			import com.st.framework.utils.LocalStoreUtil;
+			
+			import events.AnimationFrameEvent;
+			
+			import texture.AnimationAct;
+			import texture.AnimationFrame;
+			
+			import utils.image.RipResult;
+			import utils.image.SimpleRid;
+			
+			public var animationSet:AnimationAct;
+			
+			[Bindable]
+			public var af:AnimationFrame;
+			
+			public var frameIndex:int = -1;
+			
+			private function onFrameSpeedChange(event:Event):void
+			{
+				animationSet.props.framesSpeed[frameIndex] = slider.value;
+			}
+			
+			private static const imageFilter:FileFilter = new FileFilter("ImageFile","*.jpg;*.png;*.jpeg;*.bmp");
+			private static const FolderName:String = "ChangeImageFolder";
+			
+			private function onChangeImage(event:MouseEvent):void
+			{
+				var tfile:File = new File(LocalStoreUtil.read(FolderName));
+				tfile.addEventListener(Event.SELECT, 
+					function tfileSelectHandler(evt:Event):void
+					{
+						tfile.removeEventListener(Event.SELECT, tfileSelectHandler);
+						LocalStoreUtil.save(FolderName, tfile.nativePath);
+						
+						var tld:Loader = new Loader();
+						tld.contentLoaderInfo.addEventListener(Event.COMPLETE, onImageLoad);
+						tld.loadBytes(FileUtil.read(tfile));
+					});
+				//
+				tfile.browseForOpen("选择图片", [imageFilter]);
+			}
+			
+			private function onImageLoad(event:Event):void
+			{
+				var tinfo:LoaderInfo = event.target as LoaderInfo;
+				var tbmp:Bitmap = tinfo.loader.content as Bitmap;
+				var tsr:SimpleRid = new SimpleRid(tbmp.bitmapData, 0x00000000);
+				var tret:RipResult = tsr.rip();
+				
+				tinfo.removeEventListener(Event.COMPLETE, onImageLoad);
+				tbmp = new Bitmap(tret.bitmapData);
+				af.changeDisplayObject(tbmp);
+				
+				var evt:AnimationFrameEvent = new AnimationFrameEvent(AnimationFrameEvent.ImageChange, true, true);
+				evt.frame = af;
+				af.props.rect.width = tbmp.width;
+				af.props.rect.height = tbmp.height;
+				dispatchEvent(evt);
+			}
+			
+			private function onDeleteFrame(event:MouseEvent):void
+			{
+				var evt:AnimationFrameEvent = new AnimationFrameEvent(AnimationFrameEvent.DeleteFrame, true, true);
+				evt.frame = af;
+				dispatchEvent(evt);
+			}
+		]]>
+	</mx:Script>
+	<mx:HBox horizontalGap="25">
+		<mx:UIComponent id="animationFrame"/>
+		<mx:VSlider id="slider" toolTip="速度" tickInterval="1" snapInterval="1" change="onFrameSpeedChange(event)"/>		
+	</mx:HBox>
+	<mx:HBox>
+		<mx:CheckBox id="cbVFrame" selected="true" toolTip="是否显示此帧" change="{af.props.visible=cbVFrame.selected}"/>
+		<mx:RadioButton id="radioBtn" toolTip="设置为攻击帧"/>
+		<mx:Button label="换" toolTip="更换此帧图片" click="onChangeImage(event)"/>
+		<mx:Button label="删" toolTip="删除此帧" click="onDeleteFrame(event)"/>
+	</mx:HBox>
+</mx:Canvas>

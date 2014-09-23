@@ -1,0 +1,25 @@
+<config>
+	<animation_type>
+		<animation name="站立" value="0"/>
+		<animation name="走动" value="1"/>
+		<animation name="攻击" value="2"/>
+		<animation name="受伤" value="3"/>
+		<animation name="死亡" value="4"/>
+		<animation name="浮空" value="5"/>
+		<animation name="起跳" value="6"/>
+		<animation name="腾空" value="7"/>
+		<animation name="落地" value="8"/>
+		<animation name="防御" value="9"/>
+		<animation name="打坐" value="10"/>
+	</animation_type>
+	<direction_type>
+		<direction name="东" value="3"/>
+		<direction name="北" value="1"/>
+		<direction name="东北" value="2"/>
+		<direction name="东南" value="4"/>
+		<direction name="南" value="5"/>
+		<direction name="西南" value="6"/>
+		<direction name="西" value="7"/>
+		<direction name="西北" value="8"/>
+	</direction_type>
+</config>
